@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="PdxScriptAnalysis.Tests/PdxScriptAnalysis.Tests.csproj" />
+  <Project Path="PdxScriptAnalysis/PdxScriptAnalysis.csproj" />
+</Solution>
