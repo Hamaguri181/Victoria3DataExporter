@@ -188,22 +188,30 @@ namespace Victoria3.Loading.Loaders
                         }
                         break;
                     case "type":
-                        if (TryParseToString(propertyNode, "type", out var typeValue))
+                        if (TryParseToString(propertyNode, "country_type", out var typeValue))
                         {
-                            typeValue = typeValue?.Replace("_", "");
+                            typeValue = typeValue?.Replace("_", "", StringComparison.OrdinalIgnoreCase);
                             if (Enum.TryParse<CountryType>(typeValue, out var type))
                             {
                                 countryBuilder.Type = type;
+                            }
+                            else
+                            {
+                                AddError($"Invalid value \"{typeValue}\" for property \"type\". Expected one of the following values: {string.Join(", ", Enum.GetNames<CountryType>())}.", propertyNode.Span);
                             }
                         }
                         break;
                     case "tier":
                         if (TryParseToString(propertyNode, "tier", out var tierValue))
                         {
-                            tierValue = tierValue?.Replace("_", "");
+                            tierValue = tierValue?.Replace("_", "", StringComparison.OrdinalIgnoreCase);
                             if (Enum.TryParse<CountryTier>(tierValue, out var tier))
                             {
                                 countryBuilder.Tier = tier;
+                            }
+                            else
+                            {
+                                AddError($"Invalid value \"{tierValue}\" for property \"tier\". Expected one of the following values: {string.Join(", ", Enum.GetNames<CountryTier>())}.", propertyNode.Span);
                             }
                         }
                         break;
@@ -261,28 +269,28 @@ namespace Victoria3.Loading.Loaders
                         break;
                     case "dynamic_country_definition":
                         // dynamic_country_definition = yes のプロパティを持つ場合その国家は読み取らない
-                         if (TryParseToBool(propertyNode, "dynamic_country_definition", out var isDynamicCountryDefinition) && isDynamicCountryDefinition == true)
+                        if (TryParseToBool(propertyNode, "dynamic_country_definition", out var isDynamicCountryDefinition) && isDynamicCountryDefinition == true)
                         {
                             country = default!;
                             return false;
                         }
                         break;
                     default:
-                        AddError($"Unexpected property \"{propertyNode.Key.Text}\" in country definition. This property will be ignored.", propertyNode.Key.Span);
+                        AddWarning($"Unexpected property \"{propertyNode.Key.Text}\" in country definition. This property will be ignored.", propertyNode.Key.Span);
                         break;
                 }
             }
 
-            if (countryBuilder.TryBuild(out country))
+            var missings = countryBuilder.GetMissingRequiredProperties();
+            if (missings.Count > 0)
             {
-                return true;
-            }
-            else
-            {
-                AddError($"Failed to build country from node with tag \"{tag}\". Missing required properties.", node.Span);
+                AddError($"Missing required properties for country with tag \"{tag}\": {string.Join(", ", missings)}.", node.Span);
                 country = default!;
                 return false;
             }
+
+            country = countryBuilder.Build();
+            return true;
         }
 
 
@@ -340,6 +348,11 @@ namespace Victoria3.Loading.Loaders
                 "no" => false,
                 _ => null
             };
+            if (value is null)
+            {
+                AddError($"Expected the value of property \"{propertyName}\" to be \"yes\" or \"no\", but found \"{scalarPropertyNode.Value.Token.Text}\".", scalarPropertyNode.Value.Span);
+                return false;
+            }
             return value.HasValue;
         }
 
@@ -432,8 +445,11 @@ namespace Victoria3.Loading.Loaders
         private void AddError(string message, TextSpan span)
             => _diagnostics.Add(new Diagnostic(DiagnosticSeverity.Error, message, span));
 
+        private void AddWarning(string message, TextSpan span)
+            => _diagnostics.Add(new Diagnostic(DiagnosticSeverity.Warning, message, span));
 
-        // 国のビルダークラス。すべてのプロパティをオプションとして保持し、必要なプロパティがすべて揃っている場合にのみ Country オブジェクトを構築できるようにする。
+
+        // 国のビルダークラス。必須プロパティを null 許容型で保持し、ビルド時に不足しているプロパティをチェックする。
         private class CountryBuilder
         {
             internal string? Tag { get; set; }
@@ -451,30 +467,32 @@ namespace Victoria3.Loading.Loaders
             internal GameColor? TertiaryUnitColor { get; set; }
 
 
-            internal bool TryBuild(out Country country)
-            {
-                if (Tag is null || Color is null || Type is null || Tier is null || Capital is null || Cultures.Count == 0)
-                {
-                    country = default!;
-                    return false;
-                }
-
-
-                country = new Country(
-                    Tag: Tag,
-                    Color: Color.Value,
-                    Type: Type.Value,
-                    Tier: Tier.Value,
+            internal Country Build()
+                => new(
+                    Tag: Tag!,
+                    Color: Color!.Value,
+                    Type: Type!.Value,
+                    Tier: Tier!.Value,
                     SocialHierarchy: SocialHierarchy,
                     Religion: Religion,
                     Cultures: Cultures,
-                    Capital: Capital,
+                    Capital: Capital!,
                     IsNamedFromCapital: IsNamedFromCapital ?? false,
                     ValidAsHomeCountryForSeparatists: ValidAsHomeCountryForSeparatists,
                     PrimaryUnitColor: PrimaryUnitColor,
                     SecondaryUnitColor: SecondaryUnitColor,
                     TertiaryUnitColor: TertiaryUnitColor);
-                return true;
+
+            internal List<string> GetMissingRequiredProperties()
+            {
+                var missingProperties = new List<string>();
+                if (Tag is null) missingProperties.Add("Tag");
+                if (Color is null) missingProperties.Add("Color");
+                if (Type is null) missingProperties.Add("Type");
+                if (Tier is null) missingProperties.Add("Tier");
+                if (Capital is null) missingProperties.Add("Capital");
+                if (Cultures.Count == 0) missingProperties.Add("Cultures");
+                return missingProperties;
             }
         }
     }
