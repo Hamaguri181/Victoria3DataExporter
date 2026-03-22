@@ -112,6 +112,7 @@ using PdxScriptAnalysis;
 using PdxScriptAnalysis.Diagnostics;
 using PdxScriptAnalysis.Syntax;
 using PdxScriptAnalysis.Text;
+using System.Diagnostics.CodeAnalysis;
 using Victoria3.GameData;
 
 namespace Victoria3.Loading.Loaders
@@ -164,7 +165,7 @@ namespace Victoria3.Loading.Loaders
             return countries;
         }
 
-        private bool TryLoadCountry(BlockPropertyNode node, out Country country)
+        private bool TryLoadCountry(BlockPropertyNode node, [NotNullWhen(true)] out Country country)
         {
             var countryBuilder = new CountryBuilder();
 
@@ -191,7 +192,7 @@ namespace Victoria3.Loading.Loaders
                         if (TryParseToString(propertyNode, "country_type", out var typeValue))
                         {
                             var originalTypeValue = typeValue;
-                            typeValue = typeValue?.Replace("_", "", StringComparison.OrdinalIgnoreCase);
+                            typeValue = typeValue.Replace("_", "", StringComparison.OrdinalIgnoreCase);
                             if (Enum.TryParse<CountryType>(typeValue, ignoreCase: true, out var type))
                             {
                                 countryBuilder.Type = type;
@@ -206,7 +207,7 @@ namespace Victoria3.Loading.Loaders
                         if (TryParseToString(propertyNode, "tier", out var tierValue))
                         {
                             var originalTierValue = tierValue;
-                            tierValue = tierValue?.Replace("_", "", StringComparison.OrdinalIgnoreCase);
+                            tierValue = tierValue.Replace("_", "", StringComparison.OrdinalIgnoreCase);
                             if (Enum.TryParse<CountryTier>(tierValue, ignoreCase: true, out var tier))
                             {
                                 countryBuilder.Tier = tier;
@@ -297,12 +298,12 @@ namespace Victoria3.Loading.Loaders
 
 
         // スカラープロパティノードの右辺を文字列として解析するためのヘルパーメソッド
-        private bool TryParseToString(PropertyNode node, string propertyName, out string? value)
+        private bool TryParseToString(PropertyNode node, string propertyName, [NotNullWhen(true)] out string value)
         {
             if (node is not ScalarPropertyNode scalarPropertyNode)
             {
                 AddError($"Expected a scalar property node for property \"{propertyName}\", but found a different type of node.", node.Span);
-                value = null;
+                value = null!;
                 return false;
             }
 
@@ -311,19 +312,19 @@ namespace Victoria3.Loading.Loaders
         }
 
         // ブロックプロパティノードの右辺を文字列のリストとして解析するためのヘルパーメソッド
-        private bool TryParseToStringList(PropertyNode node, string propertyName, out List<string> values)
+        private bool TryParseToStringList(PropertyNode node, string propertyName, [NotNullWhen(true)] out List<string> values)
         {
             if (node is not BlockPropertyNode blockPropertyNode)
             {
                 AddError($"Expected a block property node for property \"{propertyName}\", but found a different type of node.", node.Span);
-                values = [];
+                values = null!;
                 return false;
             }
 
             if (blockPropertyNode.Value.Children.Any(c => c is not ScalarNode))
             {
                 AddError($"Expected all children of the block for property \"{propertyName}\" to be scalar nodes representing string values, but found child nodes of different types.", blockPropertyNode.Span);
-                values = [];
+                values = null!;
                 return false;
             }
 
@@ -335,7 +336,7 @@ namespace Victoria3.Loading.Loaders
         }
 
         // スカラープロパティノードの右辺を真偽値として解析するためのヘルパーメソッド
-        private bool TryParseToBool(PropertyNode node, string propertyName, out bool? value)
+        private bool TryParseToBool(PropertyNode node, string propertyName, out bool value)
         {
             if (node is not ScalarPropertyNode scalarPropertyNode)
             {
@@ -344,71 +345,75 @@ namespace Victoria3.Loading.Loaders
                 return false;
             }
 
-            value = scalarPropertyNode.Value.Token.Text switch
+            switch (scalarPropertyNode.Value.Token.Text)
             {
-                "yes" => true,
-                "no" => false,
-                _ => null
-            };
-            if (value is null)
-            {
-                AddError($"Expected the value of property \"{propertyName}\" to be \"yes\" or \"no\", but found \"{scalarPropertyNode.Value.Token.Text}\".", scalarPropertyNode.Value.Span);
-                return false;
+                case "yes":
+                    value = true;
+                    return true;
+                case "no":
+                    value = false;
+                    return true;
+                default:
+                    AddError($"Expected the value of property \"{propertyName}\" to be \"yes\" or \"no\", but found \"{scalarPropertyNode.Value.Token.Text}\".", scalarPropertyNode.Value.Span);
+                    value = default;
+                    return false;
             }
-            return value.HasValue;
         }
 
         // ブロックプロパティノードまたは型付きブロックプロパティノードの右辺を GameColor として解析するためのヘルパーメソッド
-        private bool TryParseToGameColor(PropertyNode node, string propertyName, out GameColor? color)
+        private bool TryParseToGameColor(PropertyNode node, string propertyName, out GameColor color)
         {
-            switch (node)
+            if (node is BlockPropertyNode block)
             {
-                case BlockPropertyNode block:
-                    if (TryParseFromBlockToGameColor(block.Value, propertyName, out var colorValues))
-                    {
-                        color = ColorConverter.FromRgb(colorValues[0], colorValues[1], colorValues[2]);
-                        return true;
-                    }
-                    else
-                    {
-                        color = null;
-                        return false;
-                    }
-                case TypedBlockPropertyNode typedBlock:
-                    var typeQualifier = typedBlock.TypeQualifier.Text;
-                    if (TryParseFromBlockToGameColor(typedBlock.Value, propertyName, out var typedColorValues))
-                    {
-                        if (typeQualifier.Equals("hsv", StringComparison.OrdinalIgnoreCase))
-                        {
-                            color = ColorConverter.FromHsv((float)typedColorValues[0], (float)typedColorValues[1], (float)typedColorValues[2]);
-                        }
-                        else if (typeQualifier.Equals("hsv360", StringComparison.OrdinalIgnoreCase))
-                        {
-                            color = ColorConverter.FromHsv360(typedColorValues[0], typedColorValues[1], typedColorValues[2]);
-                        }
-                        else if (typeQualifier.Equals("rgb", StringComparison.OrdinalIgnoreCase))
-                        {
-                            color = ColorConverter.FromRgb(typedColorValues[0], typedColorValues[1], typedColorValues[2]);
-                        }
-                        else
-                        {
-                            AddError($"Unsupported color type qualifier \"{typeQualifier}\" for property \"{propertyName}\". Expected \"rgb\", \"hsv\", or \"hsv360\".", typedBlock.TypeQualifier.Span);
-                            color = null;
-                            return false;
-                        }
-                        return true;
-                    }
-                    else
-                    {
-                        color = null;
-                        return false;
-                    }
-                default:
-                    AddError($"Expected a block or typed block property node for property \"{propertyName}\", but found a different type of node.", node.Span);
-                    color = null;
+                if (TryParseFromBlockToGameColor(block.Value, propertyName, out var colorValues))
+                {
+                    color = ColorConverter.FromRgb(colorValues[0], colorValues[1], colorValues[2]);
+                    return true;
+                }
+                else
+                {
+                    color = default;
                     return false;
+                }
             }
+            else if (node is TypedBlockPropertyNode typedBlock)
+            {
+                if (!TryParseFromBlockToGameColor(typedBlock.Value, propertyName, out var typedColorValues))
+                {
+                    color = default;
+                    return false;
+                }
 
+
+                var typeQualifier = typedBlock.TypeQualifier.Text;
+                if (typeQualifier.Equals("hsv", StringComparison.OrdinalIgnoreCase))
+                {
+                    color = ColorConverter.FromHsv(typedColorValues[0], typedColorValues[1], typedColorValues[2]);
+                    return true;
+                }
+                else if (typeQualifier.Equals("hsv360", StringComparison.OrdinalIgnoreCase))
+                {
+                    color = ColorConverter.FromHsv360(typedColorValues[0], typedColorValues[1], typedColorValues[2]);
+                    return true;
+                }
+                else if (typeQualifier.Equals("rgb", StringComparison.OrdinalIgnoreCase))
+                {
+                    color = ColorConverter.FromRgb(typedColorValues[0], typedColorValues[1], typedColorValues[2]);
+                    return true;
+                }
+                else
+                {
+                    AddError($"Unsupported color type qualifier \"{typeQualifier}\" for property \"{propertyName}\". Expected \"rgb\", \"hsv\", or \"hsv360\".", typedBlock.TypeQualifier.Span);
+                    color = default;
+                    return false;
+                }
+            }
+            else
+            {
+                AddError($"Expected a block or typed block property node for property \"{propertyName}\", but found a different type of node.", node.Span);
+                color = default;
+                return false;
+            }
         }
 
         // ブロックノードの子ノードを色の値として解析するためのヘルパーメソッド
