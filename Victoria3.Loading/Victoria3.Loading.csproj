@@ -1,0 +1,14 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\PdxScriptAnalysis\PdxScriptAnalysis.csproj" />
+    <ProjectReference Include="..\Victoria3.GameData\Victoria3.GameData.csproj" />
+  </ItemGroup>
+
+</Project>
