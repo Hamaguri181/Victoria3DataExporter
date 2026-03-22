@@ -11,4 +11,8 @@
     <ProjectReference Include="..\Victoria3.GameData\Victoria3.GameData.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+	<InternalsVisibleTo Include="$(AssemblyName).Tests" />
+  </ItemGroup>
+
 </Project>

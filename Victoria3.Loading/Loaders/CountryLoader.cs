@@ -78,7 +78,7 @@ namespace Victoria3.Loading.Loaders
                             countryBuilder.Color = color;
                         }
                         break;
-                    case "type":
+                    case "country_type":
                         if (TryParseToString(propertyNode, "country_type", out var typeValue))
                         {
                             var originalTypeValue = typeValue;

@@ -2,5 +2,6 @@
   <Project Path="PdxScriptAnalysis.Tests/PdxScriptAnalysis.Tests.csproj" />
   <Project Path="PdxScriptAnalysis/PdxScriptAnalysis.csproj" />
   <Project Path="Victoria3.GameData/Victoria3.GameData.csproj" />
+  <Project Path="Victoria3.Loading.Tests/Victoria3.Loading.Tests.csproj" Id="fa5324bb-bf44-4e33-8511-6cd4ada5f20e" />
   <Project Path="Victoria3.Loading/Victoria3.Loading.csproj" />
 </Solution>
