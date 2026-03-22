@@ -190,28 +190,30 @@ namespace Victoria3.Loading.Loaders
                     case "type":
                         if (TryParseToString(propertyNode, "country_type", out var typeValue))
                         {
+                            var originalTypeValue = typeValue;
                             typeValue = typeValue?.Replace("_", "", StringComparison.OrdinalIgnoreCase);
-                            if (Enum.TryParse<CountryType>(typeValue, out var type))
+                            if (Enum.TryParse<CountryType>(typeValue, ignoreCase: true, out var type))
                             {
                                 countryBuilder.Type = type;
                             }
                             else
                             {
-                                AddError($"Invalid value \"{typeValue}\" for property \"type\". Expected one of the following values: {string.Join(", ", Enum.GetNames<CountryType>())}.", propertyNode.Span);
+                                AddError($"Invalid value \"{originalTypeValue}\" for property \"type\". Expected one of the following values: {string.Join(", ", Enum.GetNames<CountryType>())}.", propertyNode.Span);
                             }
                         }
                         break;
                     case "tier":
                         if (TryParseToString(propertyNode, "tier", out var tierValue))
                         {
+                            var originalTierValue = tierValue;
                             tierValue = tierValue?.Replace("_", "", StringComparison.OrdinalIgnoreCase);
-                            if (Enum.TryParse<CountryTier>(tierValue, out var tier))
+                            if (Enum.TryParse<CountryTier>(tierValue, ignoreCase: true, out var tier))
                             {
                                 countryBuilder.Tier = tier;
                             }
                             else
                             {
-                                AddError($"Invalid value \"{tierValue}\" for property \"tier\". Expected one of the following values: {string.Join(", ", Enum.GetNames<CountryTier>())}.", propertyNode.Span);
+                                AddError($"Invalid value \"{originalTierValue}\" for property \"tier\". Expected one of the following values: {string.Join(", ", Enum.GetNames<CountryTier>())}.", propertyNode.Span);
                             }
                         }
                         break;
