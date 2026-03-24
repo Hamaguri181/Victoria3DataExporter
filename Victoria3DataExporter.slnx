@@ -4,5 +4,6 @@
   <Project Path="Victoria3.GameData/Victoria3.GameData.csproj" />
   <Project Path="Victoria3.Loading.Tests/Victoria3.Loading.Tests.csproj" Id="fa5324bb-bf44-4e33-8511-6cd4ada5f20e" />
   <Project Path="Victoria3.Loading/Victoria3.Loading.csproj" />
+  <Project Path="Victoria3.Localization.Tests/Victoria3.Localization.Tests.csproj" Id="bf54b362-5abe-4cb4-8261-2ea76142e349" />
   <Project Path="Victoria3.Localization/Victoria3.Localization.csproj" Id="9cfb3882-65a0-48f5-a7e7-e0bc0d30c8ab" />
 </Solution>

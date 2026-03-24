@@ -26,7 +26,8 @@ namespace Victoria3.Localization.Parsing
                 // if (Regex.IsMatch(line.Trim(), @"^l_[A-Za-z_]+:$")) continue;
 
                 // 空行はスキップする
-                if (line.Trim().IsEmpty) continue;
+                // ただし、空行は TryParseLine が失敗するため、個別の処理は行わない
+                // if (line.Trim().IsEmpty) continue;
 
                 // パースに失敗した行は無視する
                 if (!TryParseLine(line, out var key, out var value)) continue;
