@@ -18,6 +18,8 @@ namespace PdxScriptAnalysis.Syntax
             => walker.VisitScalar(this);
         public override IEnumerable<SyntaxNode> ChildNodes()
             => [];
+        public override LinePosition LinePosition
+            => Token.LinePosition;
 
         public override string ToString()
             => $"{GetType().Name}: {Token.Text} at {Span}";

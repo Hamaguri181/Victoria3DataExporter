@@ -18,5 +18,7 @@ namespace PdxScriptAnalysis.Syntax
             => walker.VisitRoot(this);
         public override IEnumerable<SyntaxNode> ChildNodes()
             => Children;
+        public override LinePosition LinePosition
+            => Children.Count > 0 ? Children[0].LinePosition : new LinePosition(0, Span.Length);
     }
 }

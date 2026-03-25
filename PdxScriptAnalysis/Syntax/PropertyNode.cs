@@ -15,6 +15,9 @@ namespace PdxScriptAnalysis.Syntax
         TextSpan Span)
         : SyntaxNode(Span)
     {
+        public override LinePosition LinePosition
+            => Key.LinePosition;
+
         public override string ToString()
             => $"{GetType().Name}: {Key.Text} {Operator.Text} ... at {Span}";
     }

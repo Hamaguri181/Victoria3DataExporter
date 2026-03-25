@@ -98,26 +98,6 @@ namespace Victoria3.Loading.Tests.Loaders
             output.Diagnostics[0].Message.Should().Contain("Cultures");
         }
 
-        [Fact(DisplayName = "Capital が欠損している場合、エラーが返される")]
-        public void Load_MissingCapital_ReturnsErrorAndNoCountry()
-        {
-            var input = """
-            GER = {
-                color = { 147 130 110 }
-                country_type = recognized
-                tier = empire
-                cultures = { north_german }
-            }
-            """;
-
-            var loader = new CountryLoader(ParseTrees(input));
-            var output = loader.Load();
-
-            output.Values.Should().BeEmpty();
-            output.Diagnostics.Should().ContainSingle(d => d.IsError);
-            output.Diagnostics[0].Message.Should().Contain("Capital");
-        }
-
         [Fact(DisplayName = "複数の必須フィールドが欠損している場合、エラーメッセージにすべての欠損フィールドが含まれる")]
         public void Load_MultipleRequiredFieldsMissing_ErrorMessageContainsAllMissingFields()
         {
@@ -137,7 +117,6 @@ namespace Victoria3.Loading.Tests.Loaders
             var message = output.Diagnostics[0].Message;
             message.Should().Contain("Tier");
             message.Should().Contain("Cultures");
-            message.Should().Contain("Capital");
         }
 
         // --- 不正な値 ---

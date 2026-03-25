@@ -161,7 +161,8 @@ namespace PdxScriptAnalysis.Lexing
         {
             var span = new TextSpan(start, length);
             var text = _source.GetSubText(span);
-            return new SyntaxToken(kind, text, span);
+            var linePosition = _source.GetLinePosition(span.Start);
+            return new SyntaxToken(kind, text, span, linePosition);
         }
     }
 }

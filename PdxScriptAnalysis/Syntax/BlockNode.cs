@@ -18,6 +18,8 @@ namespace PdxScriptAnalysis.Syntax
             => walker.VisitBlock(this);
         public override IEnumerable<SyntaxNode> ChildNodes()
             => Children;
+        public override LinePosition LinePosition
+            => Children.Count > 0 ? Children[0].LinePosition : new LinePosition(0, Span.Length);
 
         public override string ToString()
             => $"{GetType().Name}: {Children.Count} children at {Span}";

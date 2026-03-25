@@ -24,7 +24,7 @@
         string? SocialHierarchy,
         string? Religion,
         IReadOnlyList<string> Cultures,
-        string Capital,
+        string? Capital,
         bool IsNamedFromCapital,
         object? ValidAsHomeCountryForSeparatists,
         GameColor? PrimaryUnitColor,

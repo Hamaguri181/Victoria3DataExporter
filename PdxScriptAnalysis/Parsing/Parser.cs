@@ -70,7 +70,7 @@ namespace PdxScriptAnalysis.Parsing
             {
                 if (Current.Kind == SyntaxKind.EndOfFile)
                 {
-                    AddError("Unexpected end of file. Expected '}' to close the block.", Current.Span);
+                    AddError("Unexpected end of file. Expected '}' to close the block.", Current.Span, Current.LinePosition);
                     var span = TextSpan.Union(leftBrace.Span, Current.Span);
                     return new BlockNode(childNodes, span);
                 }
@@ -124,8 +124,8 @@ namespace PdxScriptAnalysis.Parsing
             }
             else
             {
-                AddError($"Invalid property value: \"{Current.Text}\"", Current.Span);
-                var errorToken = CreateMissing(Current.Span);
+                AddError($"Invalid property value: \"{Current.Text}\"", Current.Span, Current.LinePosition);
+                var errorToken = CreateMissing(Current.Span, Current.LinePosition);
                 var errorScalar = new ScalarNode(errorToken, errorToken.Span);
                 var span = TextSpan.Union(key.Span, errorScalar.Span);
                 return new ScalarPropertyNode(key, op, errorScalar, span);
@@ -135,7 +135,7 @@ namespace PdxScriptAnalysis.Parsing
         // 予期しないトークンが出現した場合のエラーハンドリング
         private SyntaxNode? ParseUnexpected()
         {
-            AddError($"Unexpected token: \"{Current.Text}\"", Current.Span);
+            AddError($"Unexpected token: \"{Current.Text}\"", Current.Span, Current.LinePosition);
             Advance();
             return null;
         }
@@ -153,11 +153,11 @@ namespace PdxScriptAnalysis.Parsing
         }
 
         // エラー回復のためのダミートークンを作成する
-        private static SyntaxToken CreateMissing(TextSpan span)
-            => new(SyntaxKind.Unknown, string.Empty, new TextSpan(span.Start, 0));
+        private static SyntaxToken CreateMissing(TextSpan span, LinePosition linePosition)
+            => new(SyntaxKind.Unknown, string.Empty, new TextSpan(span.Start, 0), linePosition);
 
         // エラー診断を追加するためのヘルパーメソッド
-        private void AddError(string message, TextSpan span)
-            => _diagnostics.Add(new Diagnostic(DiagnosticSeverity.Error, message, span));
+        private void AddError(string message, TextSpan span, LinePosition linePosition)
+            => _diagnostics.Add(new Diagnostic(DiagnosticSeverity.Error, message, span, linePosition));
     }
 }

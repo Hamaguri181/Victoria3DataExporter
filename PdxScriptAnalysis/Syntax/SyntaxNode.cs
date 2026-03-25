@@ -28,6 +28,11 @@ namespace PdxScriptAnalysis.Syntax
         /// <returns>この構文ノードの子ノードの列挙。</returns>
         public abstract IEnumerable<SyntaxNode> ChildNodes();
 
+        /// <summary>
+        /// この構文ノードの最初のトークンの行列位置を返す。
+        /// </summary>
+        public abstract LinePosition LinePosition { get; }
+
         public override string ToString()
             => $"{GetType().Name} at {Span}";
     }

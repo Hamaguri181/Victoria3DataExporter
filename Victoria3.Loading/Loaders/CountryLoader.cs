@@ -42,7 +42,7 @@ namespace Victoria3.Loading.Loaders
             {
                 if (topLevelNode is not BlockPropertyNode blockNode)
                 {
-                    AddError($"Unexpected top-level node of type {topLevelNode.GetType().Name}. Expected a BlockPropertyNode representing a country definition.", topLevelNode.Span);
+                    AddError($"Unexpected top-level node of type {topLevelNode.GetType().Name}. Expected a BlockPropertyNode representing a country definition.", topLevelNode.Span, topLevelNode.LinePosition);
                     continue;
                 }
 
@@ -66,7 +66,7 @@ namespace Victoria3.Loading.Loaders
             {
                 if (child is not PropertyNode propertyNode)
                 {
-                    AddError($"Unexpected child node of type {child.GetType().Name}. Expected a PropertyNode.", child.Span);
+                    AddError($"Unexpected child node of type {child.GetType().Name}. Expected a PropertyNode.", child.Span, child.LinePosition);
                     continue;
                 }
 
@@ -89,7 +89,7 @@ namespace Victoria3.Loading.Loaders
                             }
                             else
                             {
-                                AddError($"Invalid value \"{originalTypeValue}\" for property \"type\". Expected one of the following values: {string.Join(", ", Enum.GetNames<CountryType>())}.", propertyNode.Span);
+                                AddError($"Invalid value \"{originalTypeValue}\" for property \"type\". Expected one of the following values: {string.Join(", ", Enum.GetNames<CountryType>())}.", propertyNode.Span, propertyNode.LinePosition);
                             }
                         }
                         break;
@@ -104,7 +104,7 @@ namespace Victoria3.Loading.Loaders
                             }
                             else
                             {
-                                AddError($"Invalid value \"{originalTierValue}\" for property \"tier\". Expected one of the following values: {string.Join(", ", Enum.GetNames<CountryTier>())}.", propertyNode.Span);
+                                AddError($"Invalid value \"{originalTierValue}\" for property \"tier\". Expected one of the following values: {string.Join(", ", Enum.GetNames<CountryTier>())}.", propertyNode.Span, propertyNode.LinePosition);
                             }
                         }
                         break;
@@ -169,7 +169,7 @@ namespace Victoria3.Loading.Loaders
                         }
                         break;
                     default:
-                        AddWarning($"Unexpected property \"{propertyNode.Key.Text}\" in country definition. This property will be ignored.", propertyNode.Key.Span);
+                        AddWarning($"Unexpected property \"{propertyNode.Key.Text}\" in country definition. This property will be ignored.", propertyNode.Key.Span, propertyNode.LinePosition);
                         break;
                 }
             }
@@ -177,7 +177,7 @@ namespace Victoria3.Loading.Loaders
             var missings = countryBuilder.GetMissingRequiredProperties();
             if (missings.Count > 0)
             {
-                AddError($"Missing required properties for country with tag \"{tag}\": {string.Join(", ", missings)}.", node.Span);
+                AddError($"Missing required properties for country with tag \"{tag}\": {string.Join(", ", missings)}.", node.Span, node.LinePosition);
                 country = default!;
                 return false;
             }
@@ -192,7 +192,7 @@ namespace Victoria3.Loading.Loaders
         {
             if (node is not ScalarPropertyNode scalarPropertyNode)
             {
-                AddError($"Expected a scalar property node for property \"{propertyName}\", but found a different type of node.", node.Span);
+                AddError($"Expected a scalar property node for property \"{propertyName}\", but found a different type of node.", node.Span, node.LinePosition);
                 value = null!;
                 return false;
             }
@@ -206,14 +206,14 @@ namespace Victoria3.Loading.Loaders
         {
             if (node is not BlockPropertyNode blockPropertyNode)
             {
-                AddError($"Expected a block property node for property \"{propertyName}\", but found a different type of node.", node.Span);
+                AddError($"Expected a block property node for property \"{propertyName}\", but found a different type of node.", node.Span, node.LinePosition);
                 values = null!;
                 return false;
             }
 
             if (blockPropertyNode.Value.Children.Any(c => c is not ScalarNode))
             {
-                AddError($"Expected all children of the block for property \"{propertyName}\" to be scalar nodes representing string values, but found child nodes of different types.", blockPropertyNode.Span);
+                AddError($"Expected all children of the block for property \"{propertyName}\" to be scalar nodes representing string values, but found child nodes of different types.", blockPropertyNode.Span, blockPropertyNode.LinePosition);
                 values = null!;
                 return false;
             }
@@ -230,7 +230,7 @@ namespace Victoria3.Loading.Loaders
         {
             if (node is not ScalarPropertyNode scalarPropertyNode)
             {
-                AddError($"Expected a scalar property node for property \"{propertyName}\", but found a different type of node.", node.Span);
+                AddError($"Expected a scalar property node for property \"{propertyName}\", but found a different type of node.", node.Span, node.LinePosition);
                 value = default;
                 return false;
             }
@@ -244,7 +244,7 @@ namespace Victoria3.Loading.Loaders
                     value = false;
                     return true;
                 default:
-                    AddError($"Expected the value of property \"{propertyName}\" to be \"yes\" or \"no\", but found \"{scalarPropertyNode.Value.Token.Text}\".", scalarPropertyNode.Value.Span);
+                    AddError($"Expected the value of property \"{propertyName}\" to be \"yes\" or \"no\", but found \"{scalarPropertyNode.Value.Token.Text}\".", scalarPropertyNode.Value.Span, scalarPropertyNode.Value.LinePosition);
                     value = default;
                     return false;
             }
@@ -293,14 +293,14 @@ namespace Victoria3.Loading.Loaders
                 }
                 else
                 {
-                    AddError($"Unsupported color type qualifier \"{typeQualifier}\" for property \"{propertyName}\". Expected \"rgb\", \"hsv\", or \"hsv360\".", typedBlock.TypeQualifier.Span);
+                    AddError($"Unsupported color type qualifier \"{typeQualifier}\" for property \"{propertyName}\". Expected \"rgb\", \"hsv\", or \"hsv360\".", typedBlock.TypeQualifier.Span, typedBlock.TypeQualifier.LinePosition);
                     color = default;
                     return false;
                 }
             }
             else
             {
-                AddError($"Expected a block or typed block property node for property \"{propertyName}\", but found a different type of node.", node.Span);
+                AddError($"Expected a block or typed block property node for property \"{propertyName}\", but found a different type of node.", node.Span, node.LinePosition);
                 color = default;
                 return false;
             }
@@ -311,14 +311,14 @@ namespace Victoria3.Loading.Loaders
         {
             if (block.Children.Count != 3)
             {
-                AddError($"Expected a block with exactly 3 children for property \"{propertyName}\" to represent RGB values, but found a block with {block.Children.Count} children.", block.Span);
+                AddError($"Expected a block with exactly 3 children for property \"{propertyName}\" to represent RGB values, but found a block with {block.Children.Count} children.", block.Span, block.LinePosition);
                 colorValues = [];
                 return false;
             }
 
             if (block.Children.Any(c => c is not ScalarNode))
             {
-                AddError($"Expected all children of the block for property \"{propertyName}\" to be scalar nodes representing RGB components, but found a child node of a different type.", block.Span);
+                AddError($"Expected all children of the block for property \"{propertyName}\" to be scalar nodes representing RGB components, but found a child node of a different type.", block.Span, block.LinePosition);
                 colorValues = [];
                 return false;
             }
@@ -330,7 +330,7 @@ namespace Victoria3.Loading.Loaders
             {
                 if (!decimal.TryParse(rgbValueNodes[i].Token.Text, out colorValues[i]))
                 {
-                    AddError($"Expected the value of child node {i + 1} of the block for property \"{propertyName}\" to be a valid byte (0-255) representing an RGB component, but found \"{rgbValueNodes[i].Token.Text}\".", rgbValueNodes[i].Span);
+                    AddError($"Expected the value of child node {i + 1} of the block for property \"{propertyName}\" to be a valid byte (0-255) representing an RGB component, but found \"{rgbValueNodes[i].Token.Text}\".", rgbValueNodes[i].Span, rgbValueNodes[i].LinePosition);
                     colorValues = [];
                     return false;
                 }
@@ -339,12 +339,11 @@ namespace Victoria3.Loading.Loaders
         }
 
         // エラー診断を追加するためのヘルパーメソッド
-        private void AddError(string message, TextSpan span)
-            => _diagnostics.Add(new Diagnostic(DiagnosticSeverity.Error, message, span));
+        private void AddError(string message, TextSpan span, LinePosition linePosition)
+            => _diagnostics.Add(new Diagnostic(DiagnosticSeverity.Error, message, span, linePosition));
 
-        private void AddWarning(string message, TextSpan span)
-            => _diagnostics.Add(new Diagnostic(DiagnosticSeverity.Warning, message, span));
-
+        private void AddWarning(string message, TextSpan span, LinePosition linePosition)
+            => _diagnostics.Add(new Diagnostic(DiagnosticSeverity.Warning, message, span, linePosition));
 
         // 国のビルダークラス。必須プロパティを null 許容型で保持し、ビルド時に不足しているプロパティをチェックする。
         private class CountryBuilder
@@ -373,7 +372,7 @@ namespace Victoria3.Loading.Loaders
                     SocialHierarchy: SocialHierarchy,
                     Religion: Religion,
                     Cultures: Cultures,
-                    Capital: Capital!,
+                    Capital: Capital,
                     IsNamedFromCapital: IsNamedFromCapital ?? false,
                     ValidAsHomeCountryForSeparatists: ValidAsHomeCountryForSeparatists,
                     PrimaryUnitColor: PrimaryUnitColor,
@@ -387,7 +386,6 @@ namespace Victoria3.Loading.Loaders
                 if (Color is null) missingProperties.Add("Color");
                 if (Type is null) missingProperties.Add("Type");
                 if (Tier is null) missingProperties.Add("Tier");
-                if (Capital is null) missingProperties.Add("Capital");
                 if (Cultures.Count == 0) missingProperties.Add("Cultures");
                 return missingProperties;
             }

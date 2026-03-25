@@ -8,7 +8,8 @@ namespace PdxScriptAnalysis
     /// <param name="Kind">トークンの種類</param>
     /// <param name="Text">トークンのテキスト</param>
     /// <param name="Span">トークンの位置情報</param>
-    public readonly record struct SyntaxToken(SyntaxKind Kind, string Text, TextSpan Span)
+    /// <param name="LinePosition">トークンの行位置情報</param>
+    public readonly record struct SyntaxToken(SyntaxKind Kind, string Text, TextSpan Span, LinePosition LinePosition)
     {
         /// <summary>
         /// ファイルの終端を表すトークンかどうか。
