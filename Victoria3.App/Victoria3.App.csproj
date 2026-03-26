@@ -9,6 +9,13 @@
 
   <ItemGroup>
     <PackageReference Include="System.CommandLine" Version="2.0.5" />
+    <PackageReference Include="Tomlyn" Version="2.2.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\PdxScriptAnalysis\PdxScriptAnalysis.csproj" />
+    <ProjectReference Include="..\Victoria3.Loading\Victoria3.Loading.csproj" />
+    <ProjectReference Include="..\Victoria3.Localization\Victoria3.Localization.csproj" />
   </ItemGroup>
 
 </Project>
