@@ -9,5 +9,18 @@
     public readonly record struct GameColor(
         byte R,
         byte G,
-        byte B);
+        byte B)
+    {
+        /// <summary>
+        /// カラーコードに変換する。形式は "#RRGGBB" となる。
+        /// </summary>
+        /// <returns>カラーコード文字列</returns>
+        public string ToColorCode()
+        {
+            return $"#{R:X2}{G:X2}{B:X2}";
+        }
+
+        public override string ToString()
+            => ToColorCode();
+    }
 }
