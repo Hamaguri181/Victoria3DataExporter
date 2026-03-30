@@ -16,9 +16,7 @@
         /// </summary>
         /// <returns>カラーコード文字列</returns>
         public string ToColorCode()
-        {
-            return $"#{R:X2}{G:X2}{B:X2}";
-        }
+            => $"#{R:X2}{G:X2}{B:X2}";
 
         public override string ToString()
             => ToColorCode();
