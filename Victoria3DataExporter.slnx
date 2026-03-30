@@ -2,6 +2,7 @@
   <Project Path="PdxScriptAnalysis.Tests/PdxScriptAnalysis.Tests.csproj" />
   <Project Path="PdxScriptAnalysis/PdxScriptAnalysis.csproj" />
   <Project Path="Victoria3.App/Victoria3.App.csproj" Id="990e487f-dc53-44ad-9860-9a69206033ad" />
+  <Project Path="Victoria3.Formatting/Victoria3.Formatting.csproj" Id="16566810-3760-44e1-a351-9ed5414b01a2" />
   <Project Path="Victoria3.GameData/Victoria3.GameData.csproj" />
   <Project Path="Victoria3.Loading.Tests/Victoria3.Loading.Tests.csproj" Id="fa5324bb-bf44-4e33-8511-6cd4ada5f20e" />
   <Project Path="Victoria3.Loading/Victoria3.Loading.csproj" />

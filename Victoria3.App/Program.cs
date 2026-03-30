@@ -12,6 +12,7 @@ namespace Victoria3.App
             rootCommand.Subcommands.Add(new InitCommand());
             rootCommand.Subcommands.Add(new ConfigCommand());
             rootCommand.Subcommands.Add(new ListCommand());
+            rootCommand.Subcommands.Add(new ExportCommand());
 
             return await rootCommand.Parse(args).InvokeAsync();
         }

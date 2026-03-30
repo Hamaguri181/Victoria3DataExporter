@@ -170,7 +170,6 @@ CLIエントリーポイントとなる層。
 | System.CommandLine | サブコマンド・オプション・ヘルプ自動生成 |
 | Tomlyn | TOML設定ファイルの読み書き |
 | Spectre.Console | プログレスバー・対話形式セットアップ等 |
-| Microsoft.Extensions.FileSystemGlobbing | ゲームデータファイルのワイルドカード検索 |
 
 ### コマンド構造
 
