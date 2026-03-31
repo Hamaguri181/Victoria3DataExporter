@@ -96,19 +96,35 @@ namespace Victoria3.Localization
 
 
         /// <inheritdoc/>
-        public string Localize(string? key)
+        public string Localize(string? key, bool removePrefix = true)
         {
             if (key is null) return string.Empty;
+            if (removePrefix)
+            {
+                var index = key.IndexOf(':');
+                if (index >= 0)
+                {
+                    key = key[(index + 1)..];
+                }
+            }
             return _localizations.TryGetValue(key, out var value) ? value : key;
         }
 
         /// <inheritdoc/>
-        public bool TryLocalize(string? key, [NotNullWhen(true)] out string value)
+        public bool TryLocalize(string? key, [NotNullWhen(true)] out string value, bool removePrefix = true)
         {
             if (key is null)
             {
                 value = null!;
                 return false;
+            }
+            if (removePrefix)
+            {
+                var index = key.IndexOf(':');
+                if (index >= 0)
+                {
+                    key = key[(index + 1)..];
+                }
             }
             return _localizations.TryGetValue(key, out value!);
         }
