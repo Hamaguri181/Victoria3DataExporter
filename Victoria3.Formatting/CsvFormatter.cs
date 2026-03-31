@@ -7,7 +7,7 @@ namespace Victoria3.Formatting
 {
     public sealed class CsvFormatter<T>(
         IEnumerable<PropertySchema<T>>? propertySchemas = null
-        ): IGameDataFormatter<T>
+        ) : IGameDataFormatter<T>
     {
         private readonly PropertySchema<T>[] _propertySchemas = propertySchemas?.ToArray() ?? [];
 
