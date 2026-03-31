@@ -98,14 +98,18 @@ namespace Victoria3.Localization
         /// <inheritdoc/>
         public string Localize(string key)
         {
-            ArgumentNullException.ThrowIfNull(key);
+            if (key is null) return string.Empty;
             return _localizations.TryGetValue(key, out var value) ? value : key;
         }
 
         /// <inheritdoc/>
         public bool TryLocalize(string key, [NotNullWhen(true)] out string value)
         {
-            ArgumentNullException.ThrowIfNull(key);
+            if (key is null)
+            {
+                value = null!;
+                return false;
+            }
             return _localizations.TryGetValue(key, out value!);
         }
     }
