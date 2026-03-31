@@ -2,7 +2,7 @@
 using Victoria3.GameData;
 using Victoria3.Localization;
 
-namespace Victoria3.Formatting
+namespace Victoria3.Formatting.PukiwikiFormatters
 {
     public class ReleasableCountryPukiwikiFormatter
     {
