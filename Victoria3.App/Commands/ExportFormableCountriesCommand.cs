@@ -4,6 +4,7 @@ using Tomlyn;
 using Victoria3.App.Config;
 using Victoria3.App.Options;
 using Victoria3.Formatting;
+using Victoria3.Formatting.PukiwikiFormatters;
 using Victoria3.GameData;
 using Victoria3.Loading;
 using Victoria3.Loading.Loaders;
