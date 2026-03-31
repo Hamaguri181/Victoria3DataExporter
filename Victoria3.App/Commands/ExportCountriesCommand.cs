@@ -1,4 +1,5 @@
 ﻿using PdxScriptAnalysis;
+using System.Collections.Frozen;
 using System.CommandLine;
 using Tomlyn;
 using Victoria3.App.Config;
@@ -52,13 +53,15 @@ namespace Victoria3.App.Commands
                 var localizationPath = Path.Combine(gameDir, LocalizationPaths.Japanese);
                 var localizer = FileLocalizer.FromDirectory(localizationPath);
 
-                var text = new CsvFormatter<Country>().Format(output.Values, localizer);
+                var formatter = new CsvFormatter<Country>(Country.PropertySchemas);
+                var text = formatter.Format(output.Values, localizer);
 
                 var outputDir = Path.Combine(Environment.CurrentDirectory, config.Output.Directory);
                 if (!Directory.Exists(outputDir))
                 {
                     Directory.CreateDirectory(outputDir);
                 }
+
                 var outputPath = Path.Combine(outputDir, "countries.csv");
                 File.WriteAllText(outputPath, text);
 
