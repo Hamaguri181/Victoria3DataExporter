@@ -29,5 +29,26 @@
         object? ValidAsHomeCountryForSeparatists,
         GameColor? PrimaryUnitColor,
         GameColor? SecondaryUnitColor,
-        GameColor? TertiaryUnitColor);
+        GameColor? TertiaryUnitColor)
+    {
+        /// <summary>
+        /// 国家のプロパティのスキーマを定義する静的プロパティ。ゲームデータのフォーマットや表示に使用される。
+        /// </summary>
+        public static PropertySchema<Country>[] PropertySchemas =>
+        [
+            new PropertySchema<Country>(typeof(string), "Tag", c => c.Tag),
+            new PropertySchema<Country>(typeof(GameColor), "Color", c => c.Color),
+            new PropertySchema<Country>(typeof(CountryType), "Type", c => c.Type, c => c.Type.ToLocalizationKey()),
+            new PropertySchema<Country>(typeof(CountryTier), "Tier", c => c.Tier, c => c.Tier.ToLocalizationKey()),
+            new PropertySchema<Country>(typeof(string), "Social Hierarchy", c => c.SocialHierarchy),
+            new PropertySchema<Country>(typeof(string), "Religion", c => c.Religion),
+            new PropertySchema<Country>(typeof(IReadOnlyList<string>), "Cultures", c => c.Cultures),
+            new PropertySchema<Country>(typeof(string), "Capital", c => c.Capital),
+            new PropertySchema<Country>(typeof(bool), "Is Named From Capital", c => c.IsNamedFromCapital),
+            new PropertySchema<Country>(typeof(object), "Valid As Home Country For Separatists", c => c.ValidAsHomeCountryForSeparatists),
+            new PropertySchema<Country>(typeof(GameColor?), "Primary Unit Color", c => c.PrimaryUnitColor),
+            new PropertySchema<Country>(typeof(GameColor?), "Secondary Unit Color", c => c.SecondaryUnitColor),
+            new PropertySchema<Country>(typeof(GameColor?), "Tertiary Unit Color", c => c.TertiaryUnitColor),
+        ];
+    }
 }
