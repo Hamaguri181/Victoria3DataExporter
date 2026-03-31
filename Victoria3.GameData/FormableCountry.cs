@@ -12,7 +12,7 @@
         bool IsMajorFormation,
         string? UnificationPlay,
         string? LeadershipPlay,
-        decimal? MaxNumFormationCandidates,
+        int? MaxNumFormationCandidates,
         object? CanBeFormationCandidate,
         object? CanBeUnificationTarget
         )

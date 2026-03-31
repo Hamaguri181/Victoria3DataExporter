@@ -7,7 +7,7 @@ using Victoria3.GameData;
 
 namespace Victoria3.Loading.Loaders
 {
-    public sealed class FormableCountryLoader(IEnumerable<ScriptTree> trees)
+    public class ReleasableCountryLoader(IEnumerable<ScriptTree> trees)
     {
         private readonly IEnumerable<ScriptTree> _trees = trees;
         private readonly List<Diagnostic> _diagnostics = [];
@@ -16,47 +16,47 @@ namespace Victoria3.Loading.Loaders
         /// 国家データをスクリプトツリーから読み込むメソッド。各ツリーを処理し、国家データのリストと診断情報を含む <see cref="LoadOutput{Country}"/> を返す。
         /// </summary>
         /// <returns>読み込まれた国家データと診断情報を含む <see cref="LoadOutput{Country}"/> オブジェクト</returns>
-        public LoadOutput<FormableCountry> Load()
+        public LoadOutput<ReleasableCountry> Load()
         {
             _diagnostics.Clear();
-            var formables = new List<FormableCountry>();
+            var releasables = new List<ReleasableCountry>();
 
             foreach (var tree in _trees)
             {
-                var formablesFromTree = LoadFromTree(tree);
-                formables.AddRange(formablesFromTree);
+                var releasablesFromTree = LoadFromTree(tree);
+                releasables.AddRange(releasablesFromTree);
             }
 
-            return new LoadOutput<FormableCountry>(formables, _diagnostics);
+            return new LoadOutput<ReleasableCountry>(releasables, _diagnostics);
         }
 
-        private List<FormableCountry> LoadFromTree(ScriptTree tree)
+        private List<ReleasableCountry> LoadFromTree(ScriptTree tree)
         {
-            var formables = new List<FormableCountry>();
+            var releasables = new List<ReleasableCountry>();
 
             foreach (var topLevelNode in tree.Root.Children)
             {
                 if (topLevelNode is not BlockPropertyNode blockNode)
                 {
-                    AddError($"Unexpected top-level node of type {topLevelNode.GetType().Name}. Expected a BlockPropertyNode representing a formable country definition.", topLevelNode.Span, topLevelNode.LinePosition);
+                    AddError($"Unexpected top-level node of type {topLevelNode.GetType().Name}. Expected a BlockPropertyNode representing a releasable country definition.", topLevelNode.Span, topLevelNode.LinePosition);
                     continue;
                 }
 
-                if (TryLoadFormableCountry(blockNode, out var formableCountry))
+                if (TryLoadReleasableCountry(blockNode, out var releasableCountry))
                 {
-                    formables.Add(formableCountry);
+                    releasables.Add(releasableCountry);
                 }
             }
 
-            return formables;
+            return releasables;
         }
 
-        private bool TryLoadFormableCountry(BlockPropertyNode node, [NotNullWhen(true)] out FormableCountry formableCountry)
+        private bool TryLoadReleasableCountry(BlockPropertyNode node, [NotNullWhen(true)] out ReleasableCountry releasableCountry)
         {
-            var formableCountryBuilder = new FormableCountryBuilder();
+            var releasableCountryBuilder = new ReleasableCountryBuilder();
 
             var tag = node.Key.Text;
-            formableCountryBuilder.Tag = tag;
+            releasableCountryBuilder.Tag = tag;
 
             foreach (var child in node.Value.Children)
             {
@@ -72,65 +72,32 @@ namespace Victoria3.Loading.Loaders
                     case "STATES":
                         if (TryParseToStringList(propertyNode, "states", out var states))
                         {
-                            formableCountryBuilder.States = states;
+                            releasableCountryBuilder.States = states;
+                        }
+                        break;
+                    case "provinces":
+                        if (TryParseToStringList(propertyNode, "provinces", out var provinces))
+                        {
+                            releasableCountryBuilder.Provinces = provinces;
                         }
                         break;
                     case "use_culture_states":
                         if (TryParseToBool(propertyNode, "use_culture_states", out var useCultureStates))
                         {
-                            formableCountryBuilder.UseCultureStates = useCultureStates;
+                            releasableCountryBuilder.UseCultureStates = useCultureStates;
                         }
                         break;
-                    case "required_states_fraction":
-                        if (TryParseToDecimal(propertyNode, "required_states_fraction", out var requiredStatesFraction))
+                    case "required_num_states":
+                        if (TryParseToInt(propertyNode, "required_num_states", out var requiredNumStates))
                         {
-                            formableCountryBuilder.RequiredStatesFraction = requiredStatesFraction;
+                            releasableCountryBuilder.RequiredNumStates = requiredNumStates;
                         }
                         break;
                     case "ai_will_do":
-                        formableCountryBuilder.AIWillDo = propertyNode;
-                        break;
-                    case "potential":
-                        formableCountryBuilder.Potential = propertyNode;
+                        releasableCountryBuilder.AIWillDo = propertyNode;
                         break;
                     case "possible":
-                        formableCountryBuilder.Possible = propertyNode;
-                        break;
-                    case "geographic_region":
-                        if (TryParseToString(propertyNode, "geographic_region", out var geographicRegion))
-                        {
-                            formableCountryBuilder.GeographicRegion = geographicRegion;
-                        }
-                        break;
-                    case "is_major_formation":
-                        if (TryParseToBool(propertyNode, "is_major_formation", out var isMajorFormation))
-                        {
-                            formableCountryBuilder.IsMajorFormation = isMajorFormation;
-                        }
-                        break;
-                    case "unification_play":
-                        if (TryParseToString(propertyNode, "unification_play", out var unificationPlay))
-                        {
-                            formableCountryBuilder.UnificationPlay = unificationPlay;
-                        }
-                        break;
-                    case "leadership_play":
-                        if (TryParseToString(propertyNode, "leadership_play", out var leadershipPlay))
-                        {
-                            formableCountryBuilder.LeadershipPlay = leadershipPlay;
-                        }
-                        break;
-                    case "max_num_formation_candidates":
-                        if (TryParseToInt(propertyNode, "max_num_formation_candidates", out var maxNumFormationCandidates))
-                        {
-                            formableCountryBuilder.MaxNumFormationCandidates = maxNumFormationCandidates;
-                        }
-                        break;
-                    case "can_be_formation_candidate":
-                        formableCountryBuilder.CanBeFormationCandidate = propertyNode;
-                        break;
-                    case "can_be_unification_target":
-                        formableCountryBuilder.CanBeUnificationTarget = propertyNode;
+                        releasableCountryBuilder.Possible = propertyNode;
                         break;
                     default:
                         AddWarning($"Unexpected property \"{propertyNode.Key.Text}\" in country definition. This property will be ignored.", propertyNode.Key.Span, propertyNode.LinePosition);
@@ -138,32 +105,18 @@ namespace Victoria3.Loading.Loaders
                 }
             }
 
-            var missings = formableCountryBuilder.GetMissingRequiredProperties();
+            var missings = releasableCountryBuilder.GetMissingRequiredProperties();
             if (missings.Count > 0)
             {
                 AddError($"Missing required properties for formable country with tag \"{tag}\": {string.Join(", ", missings)}.", node.Span, node.LinePosition);
-                formableCountry = default!;
+                releasableCountry = default!;
                 return false;
             }
 
-            formableCountry = formableCountryBuilder.Build();
+            releasableCountry = releasableCountryBuilder.Build();
             return true;
         }
 
-
-        // スカラープロパティノードの右辺を文字列として解析するためのヘルパーメソッド
-        private bool TryParseToString(PropertyNode node, string propertyName, [NotNullWhen(true)] out string value)
-        {
-            if (node is not ScalarPropertyNode scalarPropertyNode)
-            {
-                AddError($"Expected a scalar property node for property \"{propertyName}\", but found a different type of node.", node.Span, node.LinePosition);
-                value = null!;
-                return false;
-            }
-
-            value = scalarPropertyNode.Value.Token.Text;
-            return true;
-        }
 
         // ブロックプロパティノードの右辺を文字列のリストとして解析するためのヘルパーメソッド
         private bool TryParseToStringList(PropertyNode node, string propertyName, [NotNullWhen(true)] out List<string> values)
@@ -214,22 +167,6 @@ namespace Victoria3.Loading.Loaders
             }
         }
 
-        // スカラープロパティノードの右辺を十進数として解析するためのヘルパーメソッド
-        private bool TryParseToDecimal(PropertyNode node, string propertyName, out decimal value)
-        {
-            if (node is not ScalarPropertyNode scalarPropertyNode)
-            {
-                AddError($"Expected a scalar property node for property \"{propertyName}\", but found a different type of node.", node.Span, node.LinePosition);
-                value = default;
-                return false;
-            }
-            if (!decimal.TryParse(scalarPropertyNode.Value.Token.Text, out value))
-            {
-                AddError($"Expected the value of property \"{propertyName}\" to be a valid decimal number, but found \"{scalarPropertyNode.Value.Token.Text}\".", scalarPropertyNode.Value.Span, scalarPropertyNode.Value.LinePosition);
-                return false;
-            }
-            return true;
-        }
 
         private bool TryParseToInt(PropertyNode node, string propertyName, out int value)
         {
@@ -254,40 +191,26 @@ namespace Victoria3.Loading.Loaders
         private void AddWarning(string message, TextSpan span, LinePosition linePosition)
             => _diagnostics.Add(new Diagnostic(DiagnosticSeverity.Warning, message, span, linePosition));
 
-        // 形成可能国家のビルダークラス。必須プロパティを null 許容型で保持し、ビルド時に不足しているプロパティをチェックする。
-        private class FormableCountryBuilder
+        // 解放可能国家のビルダークラス。必須プロパティを null 許容型で保持し、ビルド時に不足しているプロパティをチェックする。
+        private class ReleasableCountryBuilder
         {
             internal string? Tag { get; set; }
             internal List<string> States { get; set; } = [];
+            internal List<string> Provinces { get; set; } = [];
             internal bool? UseCultureStates { get; set; }
-            internal decimal? RequiredStatesFraction { get; set; }
+            internal int? RequiredNumStates { get; set; }
             internal object? AIWillDo { get; set; }
-            internal object? Potential { get; set; }
             internal object? Possible { get; set; }
-            internal string? GeographicRegion { get; set; }
-            internal bool? IsMajorFormation { get; set; }
-            internal string? UnificationPlay { get; set; }
-            internal string? LeadershipPlay { get; set; }
-            internal int? MaxNumFormationCandidates { get; set; }
-            internal object? CanBeFormationCandidate { get; set; }
-            internal object? CanBeUnificationTarget { get; set; }
 
-            internal FormableCountry Build()
+            internal ReleasableCountry Build()
                 => new(
                     Tag: Tag!,
                     States: States,
+                    Provinces: Provinces,
                     UseCultureStates: UseCultureStates ?? false,
-                    RequiredStatesFraction: RequiredStatesFraction ?? 1,
+                    RequiredNumStates: RequiredNumStates,
                     AIWillDo: AIWillDo,
-                    Potential: Potential,
-                    Possible: Possible,
-                    GeographicRegion: GeographicRegion,
-                    IsMajorFormation: IsMajorFormation ?? false,
-                    UnificationPlay: UnificationPlay,
-                    LeadershipPlay: LeadershipPlay,
-                    MaxNumFormationCandidates: MaxNumFormationCandidates,
-                    CanBeFormationCandidate: CanBeFormationCandidate,
-                    CanBeUnificationTarget: CanBeUnificationTarget
+                    Possible: Possible
                     );
 
             internal List<string> GetMissingRequiredProperties()

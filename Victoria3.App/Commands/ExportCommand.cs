@@ -8,6 +8,7 @@ namespace Victoria3.App.Commands
         {
             this.Subcommands.Add(new ExportCountriesCommand());
             this.Subcommands.Add(new ExportFormableCountriesCommand());
+            this.Subcommands.Add(new ExportReleasableCountriesCommand());
         }
     }
 }
