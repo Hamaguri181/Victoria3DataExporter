@@ -96,14 +96,14 @@ namespace Victoria3.Localization
 
 
         /// <inheritdoc/>
-        public string Localize(string key)
+        public string Localize(string? key)
         {
             if (key is null) return string.Empty;
             return _localizations.TryGetValue(key, out var value) ? value : key;
         }
 
         /// <inheritdoc/>
-        public bool TryLocalize(string key, [NotNullWhen(true)] out string value)
+        public bool TryLocalize(string? key, [NotNullWhen(true)] out string value)
         {
             if (key is null)
             {

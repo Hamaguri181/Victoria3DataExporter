@@ -14,7 +14,7 @@ namespace Victoria3.Localization
         /// </summary>
         /// <param name="key">変換するキー。</param>
         /// <returns>変換された文字列。見つからない場合はキー自体を返す。</returns>
-        public string Localize(string key);
+        public string Localize(string? key);
 
         /// <summary>
         /// 指定されたキーを対応する文字列に変換し、成功したかどうかを示す。
@@ -23,6 +23,6 @@ namespace Victoria3.Localization
         /// <param name="key">変換するキー。</param>
         /// <param name="value">変換された文字列。見つからない場合はnull。</param>
         /// <returns>変換が成功した場合はtrue、失敗した場合はfalse。</returns>
-        public bool TryLocalize(string key, [NotNullWhen(true)] out string value);
+        public bool TryLocalize(string? key, [NotNullWhen(true)] out string value);
     }
 }
