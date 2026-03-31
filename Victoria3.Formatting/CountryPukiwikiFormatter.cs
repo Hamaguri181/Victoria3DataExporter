@@ -8,6 +8,7 @@ namespace Victoria3.Formatting
     {
         public string Format(
             IEnumerable<Country> items,
+            IEnumerable<FormableCountry> formableCountries,
             ILocalizer localizer,
             ILocalizer englishLocalizer)
         {
@@ -26,8 +27,9 @@ namespace Victoria3.Formatting
                 var religion = localizer.Localize(country.Religion);
                 var hierarchy = localizer.Localize(country.SocialHierarchy);
                 var capital = localizer.Localize(country.Capital);
+                var isFormable = formableCountries.Any(fc => fc.Tag == country.Tag) ? "形成" : "";
 
-                sb.AppendLine($"|~{country.Tag}|{englishName}|{name}|{countryType}|{tier}|{cultures}|{religion}|{hierarchy}|{capital}||||");
+                sb.AppendLine($"|~{country.Tag}|{englishName}|{name}|{countryType}|{tier}|{cultures}|{religion}|{hierarchy}|{capital}|||{isFormable}|");
             }
             return sb.ToString();
         }

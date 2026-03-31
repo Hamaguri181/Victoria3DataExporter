@@ -5,6 +5,7 @@
     /// </summary>
     public static class Victoria3Paths
     {
-        public const string CountryDefinitions = "common/country_definitions";
+        public static string CountryDefinitions => "common/country_definitions";
+        public static string CountryFormation => "common/country_formation";
     }
 }
