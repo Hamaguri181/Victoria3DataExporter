@@ -5,23 +5,29 @@ using Victoria3.Localization;
 
 namespace Victoria3.Formatting
 {
-    public sealed class CsvFormatter<T>(
-        IEnumerable<PropertySchema<T>>? propertySchemas = null
-        ) : IGameDataFormatter<T>
+    /// <summary>
+    /// ゲームデータのコレクションをCSV形式の文字列にフォーマットするクラス。
+    /// 対象とするゲームデータの型は、<see cref="IPropertySchemaProvider{T}"/>を実装している必要がある。
+    /// </summary>
+    /// <typeparam name="T">ゲームデータの型。<see cref="IPropertySchemaProvider{T}"/>を実装している必要がある。</typeparam>
+    public static class CsvFormatter<T> where T : IPropertySchemaProvider<T>
     {
-        private readonly PropertySchema<T>[] _propertySchemas = propertySchemas?.ToArray() ?? [];
-
-
-        public string Format(IEnumerable<T> items, ILocalizer? localizer = null)
+        /// <summary>
+        /// ゲームデータのコレクションをCSV形式の文字列にフォーマットする。
+        /// </summary>
+        /// <param name="items">フォーマットするゲームデータのコレクション。</param>
+        /// <param name="localizer">ローカライゼーション用のローカライザー。指定しない場合はローカライズされない。</param>
+        /// <returns>CSV形式の文字列。</returns>
+        public static string Format(IEnumerable<T> items, ILocalizer? localizer = null)
         {
             var sb = new StringBuilder();
 
-            // ヘッダー行を出力
-            sb.AppendLine(string.Join(",", _propertySchemas.Select(s => Escape(s.DisplayName))));
+            // ヘッダー行
+            sb.AppendLine(string.Join(",", T.PropertySchemas.Select(s => Escape(s.DisplayName))));
 
             foreach (var item in items)
             {
-                var row = _propertySchemas.Select(s =>
+                var row = T.PropertySchemas.Select(s =>
                 {
                     var value = s.LocalizationKeyGetter?.Invoke(item) ?? s.Getter(item);
                     return FormatCell(value, localizer);
@@ -32,6 +38,7 @@ namespace Victoria3.Formatting
             return sb.ToString();
         }
 
+        // セルの値を文字列に変換し、必要に応じてローカライズしてエスケープする。
         private static string FormatCell(object? value, ILocalizer? localizer)
         {
             switch (value)
@@ -55,7 +62,7 @@ namespace Victoria3.Formatting
         }
 
         private static string Localize(string text, ILocalizer? localizer)
-            => localizer is not null ? localizer.Localize(text) : text;
+            => localizer?.Localize(text) ?? text;
 
         // CSVのセルの値をエスケープする。値にカンマ、ダブルクォート、改行が含まれている場合は、ダブルクォートで囲み、ダブルクォート自体は2つにする。
         private static string Escape(string text)

@@ -58,8 +58,7 @@ namespace Victoria3.App.Commands
 
                 if (format == "csv")
                 {
-                    var formatter = new CsvFormatter<FormableCountry>(FormableCountry.PropertySchemas);
-                    var text = formatter.Format(output.Values, localizer);
+                    var text = CsvFormatter<FormableCountry>.Format(output.Values, localizer);
                     var outputDir = Path.Combine(Environment.CurrentDirectory, config.Output.Directory);
                     if (!Directory.Exists(outputDir))
                     {
