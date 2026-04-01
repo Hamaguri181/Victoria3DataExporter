@@ -182,6 +182,7 @@ namespace Victoria3.Loading.Loaders
             {
                 var missingProperties = new List<string>();
                 if (Tag is null) missingProperties.Add("Tag");
+                if (States.Count == 0 && Provinces.Count == 0 && UseCultureStates != true) missingProperties.Add("States or Provinces or UseCultureStates");
                 return missingProperties;
             }
         }

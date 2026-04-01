@@ -244,6 +244,14 @@ namespace Victoria3.Loading.Loaders
             {
                 var missingProperties = new List<string>();
                 if (Tag is null) missingProperties.Add("Tag");
+                if (States.Count == 0 && UseCultureStates != true && GeographicRegion is null) missingProperties.Add("States or UseCultureStates");
+                if (IsMajorFormation == true)
+                {
+                    if (UnificationPlay is null) missingProperties.Add("UnificationPlay (required when IsMajorFormation is true)");
+                    if (LeadershipPlay is null) missingProperties.Add("LeadershipPlay (required when IsMajorFormation is true)");
+                    if (MaxNumFormationCandidates is null) missingProperties.Add("MaxNumFormationCandidates (required when IsMajorFormation is true)");
+                    if (CanBeFormationCandidate is null) missingProperties.Add("CanBeFormationCandidate (required when IsMajorFormation is true)");
+                }
                 return missingProperties;
             }
         }

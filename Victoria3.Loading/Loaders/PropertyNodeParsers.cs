@@ -193,8 +193,7 @@ namespace Victoria3.Loading.Loaders
 
             var normalizedRaw = raw
                 .Replace("_", "", StringComparison.OrdinalIgnoreCase)
-                .Replace("-", "", StringComparison.OrdinalIgnoreCase)
-                .Replace(" ", "", StringComparison.OrdinalIgnoreCase);
+                .Replace("-", "", StringComparison.OrdinalIgnoreCase);
 
             if (!Enum.TryParse(normalizedRaw, ignoreCase: true, out value))
             {
