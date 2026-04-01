@@ -7,11 +7,16 @@ using Victoria3.GameData;
 
 namespace Victoria3.Loading.Loaders
 {
-    public class HistoricalStateRegionLoader(IEnumerable<ScriptTree> trees)
+    /// <summary>
+    /// 歴史的州地域のデータをロードするクラス。
+    /// </summary>
+    /// <param name="trees">読み込むスクリプトツリーのコレクション。</param>
+    public class HistoricalStateRegionLoader(IEnumerable<ScriptTree> trees) : ILoader<HistoricalStateRegion>
     {
         private readonly IEnumerable<ScriptTree> _trees = trees;
         private readonly List<Diagnostic> _diagnostics = [];
 
+        /// <inheritdoc/>
         public LoadOutput<HistoricalStateRegion> Load()
         {
             _diagnostics.Clear();
@@ -82,22 +87,13 @@ namespace Victoria3.Loading.Loaders
                 switch (propertyNode.Key.Text)
                 {
                     case "create_state":
-                        if (TryParseToCreateState(propertyNode, "create_state", out var createState))
-                        {
-                            historicalStateRegionBuilder.CreateStates.Add(createState);
-                        }
+                        if (TryParseToCreateState(propertyNode, out var createState)) historicalStateRegionBuilder.CreateStates.Add(createState);
                         break;
                     case "add_homeland":
-                        if (TryParseToString(propertyNode, "add_homeland", out var homeland))
-                        {
-                            historicalStateRegionBuilder.Homelands.Add(homeland);
-                        }
+                        if (TryParseToString(propertyNode, out var homeland)) historicalStateRegionBuilder.Homelands.Add(homeland);
                         break;
                     case "add_claim":
-                        if (TryParseToString(propertyNode, "add_claim", out var claim))
-                        {
-                            historicalStateRegionBuilder.Claims.Add(claim);
-                        }
+                        if (TryParseToString(propertyNode, out var claim)) historicalStateRegionBuilder.Claims.Add(claim);
                         break;
                     default:
                         AddWarning($"Unexpected property \"{propertyNode.Key.Text}\" in country definition. This property will be ignored.", propertyNode.Key.Span, propertyNode.LinePosition);
@@ -117,32 +113,32 @@ namespace Victoria3.Loading.Loaders
             return true;
         }
 
-        // スカラープロパティノードの右辺を文字列として解析するためのヘルパーメソッド
-        private bool TryParseToString(PropertyNode node, string propertyName, [NotNullWhen(true)] out string value)
+        private bool TryParseToString(PropertyNode node, [NotNullWhen(true)] out string value)
         {
-            if (node is not ScalarPropertyNode scalarPropertyNode)
+            if (PropertyNodeParsers.TryParseToString(node, out value, out var diagnostic))
             {
-                AddError($"Expected a scalar property node for property \"{propertyName}\", but found a different type of node.", node.Span, node.LinePosition);
+                return true;
+            }
+            else
+            {
+                _diagnostics.Add(diagnostic);
                 value = null!;
                 return false;
             }
-
-            value = scalarPropertyNode.Value.Token.Text;
-            return true;
         }
 
-        private bool TryParseToCreateState(PropertyNode node, string propertyName, [NotNullWhen(true)] out CreateState value)
+        private bool TryParseToCreateState(PropertyNode node, [NotNullWhen(true)] out CreateState value)
         {
             if (node is not BlockPropertyNode createStateBlockNode)
             {
-                AddError($"Expected a block property node for \"create_state\", but found a different type of node.", node.Span, node.LinePosition);
+                AddError($"Expected a block property node for \"{node.Key.Text}\", but found a different type of node.", node.Span, node.LinePosition);
                 value = null!;
                 return false;
             }
             var createStateNodes = createStateBlockNode.Value.Children;
             if (!(createStateNodes.Count == 2 || createStateNodes.Count == 3))
             {
-                AddError($"Expected exactly 2 or 3 child nodes under the \"create_state\" block for state creation definition, but found {createStateBlockNode.Value.Children.Count}.", createStateBlockNode.Span, createStateBlockNode.LinePosition);
+                AddError($"Expected exactly 2 or 3 child nodes under the \"{node.Key.Text}\" block for state creation definition, but found {createStateBlockNode.Value.Children.Count}.", createStateBlockNode.Span, createStateBlockNode.LinePosition);
                 value = null!;
                 return false;
             }

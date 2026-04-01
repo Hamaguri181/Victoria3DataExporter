@@ -11,15 +11,12 @@ namespace Victoria3.Loading.Loaders
     /// 国家データを <see cref="ScriptTree"/> から読み込むローダー。
     /// </summary>
     /// <param name="trees">読み込むスクリプトツリーのコレクション。</param>
-    public sealed class CountryLoader(IEnumerable<ScriptTree> trees)
+    public sealed class CountryLoader(IEnumerable<ScriptTree> trees) : ILoader<Country>
     {
         private readonly IEnumerable<ScriptTree> _trees = trees;
         private readonly List<Diagnostic> _diagnostics = [];
 
-        /// <summary>
-        /// 国家データをスクリプトツリーから読み込むメソッド。各ツリーを処理し、国家データのリストと診断情報を含む <see cref="LoadOutput{Country}"/> を返す。
-        /// </summary>
-        /// <returns>読み込まれた国家データと診断情報を含む <see cref="LoadOutput{Country}"/> オブジェクト</returns>
+        ///  <inheritdoc/>
         public LoadOutput<Country> Load()
         {
             _diagnostics.Clear();
@@ -34,6 +31,7 @@ namespace Victoria3.Loading.Loaders
             return new LoadOutput<Country>(countries, _diagnostics);
         }
 
+        // 1つのスクリプトツリーをロードする
         private List<Country> LoadFromTree(ScriptTree tree)
         {
             var countries = new List<Country>();
@@ -73,96 +71,45 @@ namespace Victoria3.Loading.Loaders
                 switch (propertyNode.Key.Text)
                 {
                     case "color":
-                        if (TryParseToGameColor(propertyNode, "color", out var color))
-                        {
-                            countryBuilder.Color = color;
-                        }
+                        if (TryParseToGameColor(propertyNode, out var color)) countryBuilder.Color = color;
                         break;
                     case "country_type":
-                        if (TryParseToString(propertyNode, "country_type", out var typeValue))
-                        {
-                            var originalTypeValue = typeValue;
-                            typeValue = typeValue.Replace("_", "", StringComparison.OrdinalIgnoreCase);
-                            if (Enum.TryParse<CountryType>(typeValue, ignoreCase: true, out var type))
-                            {
-                                countryBuilder.Type = type;
-                            }
-                            else
-                            {
-                                AddError($"Invalid value \"{originalTypeValue}\" for property \"type\". Expected one of the following values: {string.Join(", ", Enum.GetNames<CountryType>())}.", propertyNode.Span, propertyNode.LinePosition);
-                            }
-                        }
+                        if (TryParseToEnum<CountryType>(propertyNode, out var type)) countryBuilder.Type = type;
                         break;
                     case "tier":
-                        if (TryParseToString(propertyNode, "tier", out var tierValue))
-                        {
-                            var originalTierValue = tierValue;
-                            tierValue = tierValue.Replace("_", "", StringComparison.OrdinalIgnoreCase);
-                            if (Enum.TryParse<CountryTier>(tierValue, ignoreCase: true, out var tier))
-                            {
-                                countryBuilder.Tier = tier;
-                            }
-                            else
-                            {
-                                AddError($"Invalid value \"{originalTierValue}\" for property \"tier\". Expected one of the following values: {string.Join(", ", Enum.GetNames<CountryTier>())}.", propertyNode.Span, propertyNode.LinePosition);
-                            }
-                        }
+                        if (TryParseToEnum<CountryTier>(propertyNode, out var tier)) countryBuilder.Tier = tier;
                         break;
                     case "social_hierarchy":
-                        if (TryParseToString(propertyNode, "social_hierarchy", out var socialHierarchy))
-                        {
-                            countryBuilder.SocialHierarchy = socialHierarchy;
-                        }
+                        if (TryParseToString(propertyNode, out var socialHierarchy)) countryBuilder.SocialHierarchy = socialHierarchy;
                         break;
                     case "religion":
-                        if (TryParseToString(propertyNode, "religion", out var religion))
-                        {
-                            countryBuilder.Religion = religion;
-                        }
+                        if (TryParseToString(propertyNode, out var religion)) countryBuilder.Religion = religion;
                         break;
                     case "cultures":
-                        if (TryParseToStringList(propertyNode, "cultures", out var cultures))
-                        {
-                            countryBuilder.Cultures = cultures;
-                        }
+                        if (TryParseToStringList(propertyNode, out var cultures)) countryBuilder.Cultures = cultures;
                         break;
                     case "capital":
-                        if (TryParseToString(propertyNode, "capital", out var capital))
-                        {
-                            countryBuilder.Capital = capital;
-                        }
+                        if (TryParseToString(propertyNode, out var capital)) countryBuilder.Capital = capital;
                         break;
                     case "is_named_from_capital":
-                        if (TryParseToBool(propertyNode, "is_named_from_capital", out var isNamedFromCapital))
-                        {
-                            countryBuilder.IsNamedFromCapital = isNamedFromCapital;
-                        }
+                        if (TryParseToBool(propertyNode, out var isNamedFromCapital)) countryBuilder.IsNamedFromCapital = isNamedFromCapital;
                         break;
                     case "valid_as_home_country_for_separatists":
                         // 一旦ノードをそのまま
                         countryBuilder.ValidAsHomeCountryForSeparatists = propertyNode;
                         break;
                     case "primary_unit_color":
-                        if (TryParseToGameColor(propertyNode, "primary_unit_color", out var primaryUnitColor))
-                        {
-                            countryBuilder.PrimaryUnitColor = primaryUnitColor;
-                        }
+                        if (TryParseToGameColor(propertyNode, out var primaryUnitColor)) countryBuilder.PrimaryUnitColor = primaryUnitColor;
                         break;
                     case "secondary_unit_color":
-                        if (TryParseToGameColor(propertyNode, "secondary_unit_color", out var secondaryUnitColor))
-                        {
-                            countryBuilder.SecondaryUnitColor = secondaryUnitColor;
-                        }
+                        if (TryParseToGameColor(propertyNode, out var secondaryUnitColor)) countryBuilder.SecondaryUnitColor = secondaryUnitColor;
                         break;
                     case "tertiary_unit_color":
-                        if (TryParseToGameColor(propertyNode, "tertiary_unit_color", out var tertiaryUnitColor))
-                        {
-                            countryBuilder.TertiaryUnitColor = tertiaryUnitColor;
-                        }
+                        if (TryParseToGameColor(propertyNode, out var tertiaryUnitColor)) countryBuilder.TertiaryUnitColor = tertiaryUnitColor;
                         break;
                     case "dynamic_country_definition":
                         // dynamic_country_definition = yes のプロパティを持つ場合その国家は読み取らない
-                        if (TryParseToBool(propertyNode, "dynamic_country_definition", out var isDynamicCountryDefinition) && isDynamicCountryDefinition == true)
+                        if (TryParseToBool(propertyNode, out var isDynamicCountryDefinition) && isDynamicCountryDefinition == true)
                         {
                             country = default!;
                             return false;
@@ -187,165 +134,84 @@ namespace Victoria3.Loading.Loaders
         }
 
 
-        // スカラープロパティノードの右辺を文字列として解析するためのヘルパーメソッド
-        private bool TryParseToString(PropertyNode node, string propertyName, [NotNullWhen(true)] out string value)
+        private bool TryParseToString(PropertyNode node, [NotNullWhen(true)] out string value)
         {
-            if (node is not ScalarPropertyNode scalarPropertyNode)
+            if (PropertyNodeParsers.TryParseToString(node, out value, out var diagnostic))
             {
-                AddError($"Expected a scalar property node for property \"{propertyName}\", but found a different type of node.", node.Span, node.LinePosition);
-                value = null!;
-                return false;
-            }
-
-            value = scalarPropertyNode.Value.Token.Text;
-            return true;
-        }
-
-        // ブロックプロパティノードの右辺を文字列のリストとして解析するためのヘルパーメソッド
-        private bool TryParseToStringList(PropertyNode node, string propertyName, [NotNullWhen(true)] out List<string> values)
-        {
-            if (node is not BlockPropertyNode blockPropertyNode)
-            {
-                AddError($"Expected a block property node for property \"{propertyName}\", but found a different type of node.", node.Span, node.LinePosition);
-                values = null!;
-                return false;
-            }
-
-            if (blockPropertyNode.Value.Children.Any(c => c is not ScalarNode))
-            {
-                AddError($"Expected all children of the block for property \"{propertyName}\" to be scalar nodes representing string values, but found child nodes of different types.", blockPropertyNode.Span, blockPropertyNode.LinePosition);
-                values = null!;
-                return false;
-            }
-
-            values = blockPropertyNode.Value.Children
-                .OfType<ScalarNode>()
-                .Select(n => n.Token.Text)
-                .ToList();
-            return true;
-        }
-
-        // スカラープロパティノードの右辺を真偽値として解析するためのヘルパーメソッド
-        private bool TryParseToBool(PropertyNode node, string propertyName, out bool value)
-        {
-            if (node is not ScalarPropertyNode scalarPropertyNode)
-            {
-                AddError($"Expected a scalar property node for property \"{propertyName}\", but found a different type of node.", node.Span, node.LinePosition);
-                value = default;
-                return false;
-            }
-
-            switch (scalarPropertyNode.Value.Token.Text)
-            {
-                case "yes":
-                    value = true;
-                    return true;
-                case "no":
-                    value = false;
-                    return true;
-                default:
-                    AddError($"Expected the value of property \"{propertyName}\" to be \"yes\" or \"no\", but found \"{scalarPropertyNode.Value.Token.Text}\".", scalarPropertyNode.Value.Span, scalarPropertyNode.Value.LinePosition);
-                    value = default;
-                    return false;
-            }
-        }
-
-        // ブロックプロパティノードまたは型付きブロックプロパティノードの右辺を GameColor として解析するためのヘルパーメソッド
-        private bool TryParseToGameColor(PropertyNode node, string propertyName, out GameColor color)
-        {
-            if (node is BlockPropertyNode block)
-            {
-                if (TryParseFromBlockToGameColor(block.Value, propertyName, out var colorValues))
-                {
-                    color = ColorConverter.FromRgb(colorValues[0], colorValues[1], colorValues[2]);
-                    return true;
-                }
-                else
-                {
-                    color = default;
-                    return false;
-                }
-            }
-            else if (node is TypedBlockPropertyNode typedBlock)
-            {
-                if (!TryParseFromBlockToGameColor(typedBlock.Value, propertyName, out var typedColorValues))
-                {
-                    color = default;
-                    return false;
-                }
-
-
-                var typeQualifier = typedBlock.TypeQualifier.Text;
-                if (typeQualifier.Equals("hsv", StringComparison.OrdinalIgnoreCase))
-                {
-                    color = ColorConverter.FromHsv(typedColorValues[0], typedColorValues[1], typedColorValues[2]);
-                    return true;
-                }
-                else if (typeQualifier.Equals("hsv360", StringComparison.OrdinalIgnoreCase))
-                {
-                    color = ColorConverter.FromHsv360(typedColorValues[0], typedColorValues[1], typedColorValues[2]);
-                    return true;
-                }
-                else if (typeQualifier.Equals("rgb", StringComparison.OrdinalIgnoreCase))
-                {
-                    color = ColorConverter.FromRgb(typedColorValues[0], typedColorValues[1], typedColorValues[2]);
-                    return true;
-                }
-                else
-                {
-                    AddError($"Unsupported color type qualifier \"{typeQualifier}\" for property \"{propertyName}\". Expected \"rgb\", \"hsv\", or \"hsv360\".", typedBlock.TypeQualifier.Span, typedBlock.TypeQualifier.LinePosition);
-                    color = default;
-                    return false;
-                }
+                return true;
             }
             else
             {
-                AddError($"Expected a block or typed block property node for property \"{propertyName}\", but found a different type of node.", node.Span, node.LinePosition);
+                _diagnostics.Add(diagnostic);
+                value = null!;
+                return false;
+            }
+        }
+
+        private bool TryParseToStringList(PropertyNode node, [NotNullWhen(true)] out List<string> values)
+        {
+            if (PropertyNodeParsers.TryParseToStringList(node, out values, out var diagnostic))
+            {
+                return true;
+            }
+            else
+            {
+                _diagnostics.Add(diagnostic);
+                values = null!;
+                return false;
+            }
+        }
+
+        private bool TryParseToBool(PropertyNode node, out bool value)
+        {
+            if (PropertyNodeParsers.TryParseToBool(node, out value, out var diagnostic))
+            {
+                return true;
+            }
+            else
+            {
+                _diagnostics.Add(diagnostic);
+                value = false;
+                return false;
+            }
+        }
+
+        private bool TryParseToEnum<TEnum>(PropertyNode node, out TEnum value)
+            where TEnum : struct, Enum
+        {
+            if (PropertyNodeParsers.TryParseToEnum(node, out value, out var diagnostic))
+            {
+                return true;
+            }
+            else
+            {
+                _diagnostics.Add(diagnostic);
+                value = default;
+                return false;
+            }
+        }
+
+        private bool TryParseToGameColor(PropertyNode node, out GameColor color)
+        {
+            if (PropertyNodeParsers.TryParseToGameColor(node, out color, out var diagnostic))
+            {
+                return true;
+            }
+            else
+            {
+                _diagnostics.Add(diagnostic);
                 color = default;
                 return false;
             }
         }
 
-        // ブロックノードの子ノードを色の値として解析するためのヘルパーメソッド
-        private bool TryParseFromBlockToGameColor(BlockNode block, string propertyName, out decimal[] colorValues)
-        {
-            if (block.Children.Count != 3)
-            {
-                AddError($"Expected a block with exactly 3 children for property \"{propertyName}\" to represent RGB values, but found a block with {block.Children.Count} children.", block.Span, block.LinePosition);
-                colorValues = [];
-                return false;
-            }
-
-            if (block.Children.Any(c => c is not ScalarNode))
-            {
-                AddError($"Expected all children of the block for property \"{propertyName}\" to be scalar nodes representing RGB components, but found a child node of a different type.", block.Span, block.LinePosition);
-                colorValues = [];
-                return false;
-            }
-
-            var rgbValueNodes = block.Children.OfType<ScalarNode>().ToList();
-
-            colorValues = new decimal[3];
-            for (int i = 0; i < 3; i++)
-            {
-                if (!decimal.TryParse(rgbValueNodes[i].Token.Text, out colorValues[i]))
-                {
-                    AddError($"Expected the value of child node {i + 1} of the block for property \"{propertyName}\" to be a valid byte (0-255) representing an RGB component, but found \"{rgbValueNodes[i].Token.Text}\".", rgbValueNodes[i].Span, rgbValueNodes[i].LinePosition);
-                    colorValues = [];
-                    return false;
-                }
-            }
-            return true;
-        }
-
         // エラー診断を追加するためのヘルパーメソッド
         private void AddError(string message, TextSpan span, LinePosition linePosition)
             => _diagnostics.Add(new Diagnostic(DiagnosticSeverity.Error, message, span, linePosition));
-
         private void AddWarning(string message, TextSpan span, LinePosition linePosition)
             => _diagnostics.Add(new Diagnostic(DiagnosticSeverity.Warning, message, span, linePosition));
 
-        // 国のビルダークラス。必須プロパティを null 許容型で保持し、ビルド時に不足しているプロパティをチェックする。
+        // ビルダー。必須プロパティを null 許容型で保持し、ビルド時に不足しているプロパティをチェックする。
         private class CountryBuilder
         {
             internal string? Tag { get; set; }

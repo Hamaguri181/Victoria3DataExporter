@@ -7,11 +7,16 @@ using Victoria3.GameData;
 
 namespace Victoria3.Loading.Loaders
 {
-    public class ReleasableCountryLoader(IEnumerable<ScriptTree> trees)
+    /// <summary>
+    /// 解放可能国家のデータをロードするクラス。
+    /// </summary>
+    /// <param name="trees">読み込むスクリプトツリーのコレクション。</param>
+    public class ReleasableCountryLoader(IEnumerable<ScriptTree> trees) : ILoader<ReleasableCountry>
     {
         private readonly IEnumerable<ScriptTree> _trees = trees;
         private readonly List<Diagnostic> _diagnostics = [];
 
+        /// <inheritdoc/>
         public LoadOutput<ReleasableCountry> Load()
         {
             _diagnostics.Clear();
@@ -66,28 +71,16 @@ namespace Victoria3.Loading.Loaders
                 {
                     case "states":
                     case "STATES":
-                        if (TryParseToStringList(propertyNode, "states", out var states))
-                        {
-                            releasableCountryBuilder.States = states;
-                        }
+                        if (TryParseToStringList(propertyNode, out var states)) releasableCountryBuilder.States = states;
                         break;
                     case "provinces":
-                        if (TryParseToStringList(propertyNode, "provinces", out var provinces))
-                        {
-                            releasableCountryBuilder.Provinces = provinces;
-                        }
+                        if (TryParseToStringList(propertyNode, out var provinces)) releasableCountryBuilder.Provinces = provinces;
                         break;
                     case "use_culture_states":
-                        if (TryParseToBool(propertyNode, "use_culture_states", out var useCultureStates))
-                        {
-                            releasableCountryBuilder.UseCultureStates = useCultureStates;
-                        }
+                        if (TryParseToBool(propertyNode, out var useCultureStates)) releasableCountryBuilder.UseCultureStates = useCultureStates;
                         break;
                     case "required_num_states":
-                        if (TryParseToInt(propertyNode, "required_num_states", out var requiredNumStates))
-                        {
-                            releasableCountryBuilder.RequiredNumStates = requiredNumStates;
-                        }
+                        if (TryParseToInt(propertyNode, out var requiredNumStates)) releasableCountryBuilder.RequiredNumStates = requiredNumStates;
                         break;
                     case "ai_will_do":
                         releasableCountryBuilder.AIWillDo = propertyNode;
@@ -114,70 +107,46 @@ namespace Victoria3.Loading.Loaders
         }
 
 
-        // ブロックプロパティノードの右辺を文字列のリストとして解析するためのヘルパーメソッド
-        private bool TryParseToStringList(PropertyNode node, string propertyName, [NotNullWhen(true)] out List<string> values)
+        private bool TryParseToStringList(PropertyNode node, [NotNullWhen(true)] out List<string> values)
         {
-            if (node is not BlockPropertyNode blockPropertyNode)
+            if (PropertyNodeParsers.TryParseToStringList(node, out values, out var diagnostic))
             {
-                AddError($"Expected a block property node for property \"{propertyName}\", but found a different type of node.", node.Span, node.LinePosition);
+                return true;
+            }
+            else
+            {
+                _diagnostics.Add(diagnostic);
                 values = null!;
                 return false;
             }
-
-            if (blockPropertyNode.Value.Children.Any(c => c is not ScalarNode))
-            {
-                AddError($"Expected all children of the block for property \"{propertyName}\" to be scalar nodes representing string values, but found child nodes of different types.", blockPropertyNode.Span, blockPropertyNode.LinePosition);
-                values = null!;
-                return false;
-            }
-
-            values = blockPropertyNode.Value.Children
-                .OfType<ScalarNode>()
-                .Select(n => n.Token.Text)
-                .ToList();
-            return true;
         }
 
-        // スカラープロパティノードの右辺を真偽値として解析するためのヘルパーメソッド
-        private bool TryParseToBool(PropertyNode node, string propertyName, out bool value)
+        private bool TryParseToBool(PropertyNode node, out bool value)
         {
-            if (node is not ScalarPropertyNode scalarPropertyNode)
+            if (PropertyNodeParsers.TryParseToBool(node, out value, out var diagnostic))
             {
-                AddError($"Expected a scalar property node for property \"{propertyName}\", but found a different type of node.", node.Span, node.LinePosition);
-                value = default;
-                return false;
+                return true;
             }
-
-            switch (scalarPropertyNode.Value.Token.Text)
+            else
             {
-                case "yes":
-                    value = true;
-                    return true;
-                case "no":
-                    value = false;
-                    return true;
-                default:
-                    AddError($"Expected the value of property \"{propertyName}\" to be \"yes\" or \"no\", but found \"{scalarPropertyNode.Value.Token.Text}\".", scalarPropertyNode.Value.Span, scalarPropertyNode.Value.LinePosition);
-                    value = default;
-                    return false;
+                _diagnostics.Add(diagnostic);
+                value = false;
+                return false;
             }
         }
 
-
-        private bool TryParseToInt(PropertyNode node, string propertyName, out int value)
+        private bool TryParseToInt(PropertyNode node, out int value)
         {
-            if (node is not ScalarPropertyNode scalarPropertyNode)
+            if (PropertyNodeParsers.TryParseToInt(node, out value, out var diagnostic))
             {
-                AddError($"Expected a scalar property node for property \"{propertyName}\", but found a different type of node.", node.Span, node.LinePosition);
-                value = default;
+                return true;
+            }
+            else
+            {
+                _diagnostics.Add(diagnostic);
+                value = 0;
                 return false;
             }
-            if (!int.TryParse(scalarPropertyNode.Value.Token.Text, out value))
-            {
-                AddError($"Expected the value of property \"{propertyName}\" to be a valid integer number, but found \"{scalarPropertyNode.Value.Token.Text}\".", scalarPropertyNode.Value.Span, scalarPropertyNode.Value.LinePosition);
-                return false;
-            }
-            return true;
         }
 
         // エラー診断を追加するためのヘルパーメソッド
@@ -187,7 +156,7 @@ namespace Victoria3.Loading.Loaders
         private void AddWarning(string message, TextSpan span, LinePosition linePosition)
             => _diagnostics.Add(new Diagnostic(DiagnosticSeverity.Warning, message, span, linePosition));
 
-        // 解放可能国家のビルダークラス。必須プロパティを null 許容型で保持し、ビルド時に不足しているプロパティをチェックする。
+        // ビルダー。必須プロパティを null 許容型で保持し、ビルド時に不足しているプロパティをチェックする。
         private class ReleasableCountryBuilder
         {
             internal string? Tag { get; set; }
