@@ -5,8 +5,8 @@
     /// </summary>
     public static class LocalizationPaths
     {
-        public static string Japanese => "localization/japanese";
-        public static string English => "localization/english";
+        public static string Japanese => @"localization\japanese";
+        public static string English => @"localization\english";
 
         /// <summary>
         /// 言語名を指定して対応する翻訳ファイルのパスを取得するメソッド。
