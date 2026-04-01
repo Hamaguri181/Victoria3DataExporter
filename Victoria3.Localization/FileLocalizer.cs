@@ -101,11 +101,7 @@ namespace Victoria3.Localization
             if (key is null) return string.Empty;
             if (removePrefix)
             {
-                var index = key.IndexOf(':');
-                if (index >= 0)
-                {
-                    key = key[(index + 1)..];
-                }
+                key = RemovePrefix(key);
             }
             return _localizations.TryGetValue(key, out var value) ? value : key;
         }
@@ -120,13 +116,19 @@ namespace Victoria3.Localization
             }
             if (removePrefix)
             {
-                var index = key.IndexOf(':');
-                if (index >= 0)
-                {
-                    key = key[(index + 1)..];
-                }
+                key = RemovePrefix(key);
             }
             return _localizations.TryGetValue(key, out value!);
+        }
+
+        private static string RemovePrefix(string key)
+        {
+            var index = key.IndexOf(':');
+            if (index >= 0)
+            {
+                return key[(index + 1)..];
+            }
+            return key;
         }
     }
 }

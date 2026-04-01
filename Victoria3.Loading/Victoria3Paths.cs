@@ -8,5 +8,6 @@
         public static string CountryDefinitions => "common/country_definitions";
         public static string CountryFormation => "common/country_formation";
         public static string CountryCreation => "common/country_creation";
+        public static string HistoricalStates => "common/history/states";
     }
 }

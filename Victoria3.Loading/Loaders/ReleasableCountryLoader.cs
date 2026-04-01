@@ -12,10 +12,6 @@ namespace Victoria3.Loading.Loaders
         private readonly IEnumerable<ScriptTree> _trees = trees;
         private readonly List<Diagnostic> _diagnostics = [];
 
-        /// <summary>
-        /// 国家データをスクリプトツリーから読み込むメソッド。各ツリーを処理し、国家データのリストと診断情報を含む <see cref="LoadOutput{Country}"/> を返す。
-        /// </summary>
-        /// <returns>読み込まれた国家データと診断情報を含む <see cref="LoadOutput{Country}"/> オブジェクト</returns>
         public LoadOutput<ReleasableCountry> Load()
         {
             _diagnostics.Clear();
