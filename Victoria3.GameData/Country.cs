@@ -30,11 +30,9 @@
         GameColor? PrimaryUnitColor,
         GameColor? SecondaryUnitColor,
         GameColor? TertiaryUnitColor)
+        : IPropertySchemaProvider<Country>
     {
-        /// <summary>
-        /// 国家のプロパティのスキーマを定義する静的プロパティ。ゲームデータのフォーマットや表示に使用される。
-        /// </summary>
-        public static PropertySchema<Country>[] PropertySchemas =>
+        private static readonly PropertySchema<Country>[] _propertySchemas =
         [
             new PropertySchema<Country>(typeof(string), "Tag", c => c.Tag),
             new PropertySchema<Country>(typeof(GameColor), "Color", c => c.Color),
@@ -50,5 +48,9 @@
             new PropertySchema<Country>(typeof(GameColor?), "Secondary Unit Color", c => c.SecondaryUnitColor),
             new PropertySchema<Country>(typeof(GameColor?), "Tertiary Unit Color", c => c.TertiaryUnitColor),
         ];
+
+        /// <inheritdoc/>
+        public static PropertySchema<Country>[] PropertySchemas
+            => _propertySchemas;
     }
 }
