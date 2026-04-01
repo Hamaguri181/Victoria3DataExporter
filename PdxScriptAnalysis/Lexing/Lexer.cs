@@ -33,13 +33,13 @@ namespace PdxScriptAnalysis.Lexing
         {
             SkipTrivia();
 
-            if (_position >= _source.Length) return MakeToken(SyntaxKind.EndOfFile, _position, 0);
+            if (_position >= _source.Length) return CreateToken(SyntaxKind.EndOfFile, _position, 0);
 
             return Current switch
             {
-                '{' => MakeToken(SyntaxKind.LeftBrace, _position++, 1),
-                '}' => MakeToken(SyntaxKind.RightBrace, _position++, 1),
-                '=' => MakeToken(SyntaxKind.Equals, _position++, 1),
+                '{' => CreateToken(SyntaxKind.LeftBrace, _position++, 1),
+                '}' => CreateToken(SyntaxKind.RightBrace, _position++, 1),
+                '=' => CreateToken(SyntaxKind.Equals, _position++, 1),
                 '<' => ReadLessThan(),
                 '>' => ReadGreaterThan(),
                 '!' => ReadNotEquals(),
@@ -56,9 +56,9 @@ namespace PdxScriptAnalysis.Lexing
             if (_position < _source.Length && Current == '=')
             {
                 Advance();
-                return MakeToken(SyntaxKind.LessThanEquals, start, 2);
+                return CreateToken(SyntaxKind.LessThanEquals, start, 2);
             }
-            return MakeToken(SyntaxKind.LessThan, start, 1);
+            return CreateToken(SyntaxKind.LessThan, start, 1);
         }
 
         private SyntaxToken ReadGreaterThan()
@@ -68,9 +68,9 @@ namespace PdxScriptAnalysis.Lexing
             if (_position < _source.Length && Current == '=')
             {
                 Advance();
-                return MakeToken(SyntaxKind.GreaterThanEquals, start, 2);
+                return CreateToken(SyntaxKind.GreaterThanEquals, start, 2);
             }
-            return MakeToken(SyntaxKind.GreaterThan, start, 1);
+            return CreateToken(SyntaxKind.GreaterThan, start, 1);
         }
 
         private SyntaxToken ReadNotEquals()
@@ -80,9 +80,9 @@ namespace PdxScriptAnalysis.Lexing
             if (_position < _source.Length && Current == '=')
             {
                 Advance();
-                return MakeToken(SyntaxKind.NotEquals, start, 2);
+                return CreateToken(SyntaxKind.NotEquals, start, 2);
             }
-            return MakeToken(SyntaxKind.Unknown, start, 1);
+            return CreateToken(SyntaxKind.Unknown, start, 1);
         }
 
         private SyntaxToken ReadQuestionEquals()
@@ -92,9 +92,9 @@ namespace PdxScriptAnalysis.Lexing
             if (_position < _source.Length && Current == '=')
             {
                 Advance();
-                return MakeToken(SyntaxKind.QuestionEquals, start, 2);
+                return CreateToken(SyntaxKind.QuestionEquals, start, 2);
             }
-            return MakeToken(SyntaxKind.Unknown, start, 1);
+            return CreateToken(SyntaxKind.Unknown, start, 1);
         }
 
         private SyntaxToken ReadStringLiteral()
@@ -108,13 +108,13 @@ namespace PdxScriptAnalysis.Lexing
             }
 
             // 終了の二重引用符が見つからない場合は、文字列リテラルの終わりまでをトークン化する
-            if (_position >= _source.Length) return MakeToken(SyntaxKind.Unknown, start, _position - start);
+            if (_position >= _source.Length) return CreateToken(SyntaxKind.Unknown, start, _position - start);
 
             if (_position < _source.Length)
             {
                 Advance(); // 終了の二重引用符をスキップ
             }
-            return MakeToken(SyntaxKind.StringLiteral, start, _position - start);
+            return CreateToken(SyntaxKind.StringLiteral, start, _position - start);
         }
 
         private SyntaxToken ReadAtom()
@@ -125,9 +125,9 @@ namespace PdxScriptAnalysis.Lexing
                 Advance();
             }
 
-            if (start == _position) return MakeToken(SyntaxKind.Unknown, _position++, 1);
+            if (start == _position) return CreateToken(SyntaxKind.Unknown, _position++, 1);
 
-            return MakeToken(SyntaxKind.Atom, start, _position - start);
+            return CreateToken(SyntaxKind.Atom, start, _position - start);
         }
 
         private static bool IsAtomChar(char c)
@@ -157,7 +157,7 @@ namespace PdxScriptAnalysis.Lexing
             }
         }
 
-        private SyntaxToken MakeToken(SyntaxKind kind, int start, int length)
+        private SyntaxToken CreateToken(SyntaxKind kind, int start, int length)
         {
             var span = new TextSpan(start, length);
             var text = _source.GetSubText(span);
