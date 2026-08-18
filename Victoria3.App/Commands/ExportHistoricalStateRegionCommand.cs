@@ -27,7 +27,7 @@ namespace Victoria3.App.Commands
                 var format = parseResult.GetValue(formatOption);
                 var language = parseResult.GetValue(languageOption);
 
-                Console.WriteLine($"解放可能国家のデータを{format}形式でエクスポートしています...");
+                Console.WriteLine($"歴史的州地域のデータを{format}形式でエクスポートしています...");
 
                 // 設定ファイルの読み込み
                 var configPath = Path.Combine(Environment.CurrentDirectory, "vic3tool.toml");
@@ -89,10 +89,10 @@ namespace Victoria3.App.Commands
 
         internal static LoadOutput<HistoricalStateRegion> LoadHistoricalStateRegions(string gameDir)
         {
-            var countryDataPath = Path.Combine(gameDir, Victoria3Paths.HistoricalStates);
+            var historicalStatesDataPath = Path.Combine(gameDir, Victoria3Paths.HistoricalStates);
             // 解析
-            var scriptTrees = Directory.EnumerateFiles(countryDataPath, "*.txt").Select(ScriptTree.ParseFile).ToList();
-            Console.WriteLine($"ファイル\"{countryDataPath}\"を解析しました。診断結果: {scriptTrees.Sum(st => st.Diagnostics.Count)}件");
+            var scriptTrees = Directory.EnumerateFiles(historicalStatesDataPath, "*.txt").Select(ScriptTree.ParseFile).ToList();
+            Console.WriteLine($"ファイル\"{historicalStatesDataPath}\"を解析しました。診断結果: {scriptTrees.Sum(st => st.Diagnostics.Count)}件");
             // ロード
             var output = new HistoricalStateRegionLoader(scriptTrees).Load();
             Console.WriteLine($"読み込んだ歴史的州地域の数: {output.Values.Count}、診断結果: {output.Diagnostics.Count}件");

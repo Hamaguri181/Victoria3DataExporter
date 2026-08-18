@@ -12,6 +12,6 @@
         IReadOnlyList<string> Provinces)
     {
         public override string ToString()
-            => $"{Provinces.Count} province(s) owned by {Country}";
+            => $"{Country}({Provinces.Count})";
     }
 }

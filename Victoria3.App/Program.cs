@@ -14,6 +14,18 @@ namespace Victoria3.App
             rootCommand.Subcommands.Add(new ListCommand());
             rootCommand.Subcommands.Add(new ExportCommand());
 
+
+            if (args.Length <= 0)
+            {
+                string? input = null;
+                while (input is null)
+                {
+                    Console.WriteLine("コマンドを入力してください");
+                    input = Console.ReadLine();
+                }
+                args = input.Split(" ");
+            }
+
             return await rootCommand.Parse(args).InvokeAsync();
         }
     }

@@ -18,18 +18,16 @@ namespace Victoria3.App.Commands
 
                 var configPath = Path.Combine(Environment.CurrentDirectory, "vic3tool.toml");
 
-                var config = new AppConfig();
-                if (File.Exists(configPath))
-                {
-                    var configText = File.ReadAllText(configPath);
-                    config = TomlSerializer.Deserialize<AppConfig>(configText);
-                }
-                else
+                if (!File.Exists(configPath))
                 {
                     Console.WriteLine("設定ファイルが見つかりません。");
                     Console.WriteLine("設定ファイルのパス: " + configPath);
                     return;
                 }
+
+                var config = new AppConfig();
+                var configText = File.ReadAllText(configPath);
+                config = TomlSerializer.Deserialize<AppConfig>(configText);
 
                 if (config is null)
                 {
@@ -41,9 +39,11 @@ namespace Victoria3.App.Commands
 
                 var countryDataPath = Path.Combine(gameDir, Victoria3Paths.CountryDefinitions);
 
-                var scriptTrees = Directory.EnumerateFiles(countryDataPath, "*.txt").Select(ScriptTree.ParseFile).ToList();
+                var scriptTrees = Directory.EnumerateFiles(countryDataPath, "*.txt")
+                    .Select(ScriptTree.ParseFile)
+                    .ToList();
 
-                Console.WriteLine($"ファイル\"{countryDataPath}\"を解析しました。診断結果: {scriptTrees.Sum(st => st.Diagnostics.Count)}件");
+                Console.WriteLine($"ディレクトリ\"{countryDataPath}\"のファイルを解析しました。診断結果: {scriptTrees.Sum(st => st.Diagnostics.Count)}件");
 
                 var output = new CountryLoader(scriptTrees).Load();
 
