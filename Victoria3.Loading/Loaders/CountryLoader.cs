@@ -1,8 +1,5 @@
 ﻿using PdxScriptAnalysis;
 using PdxScriptAnalysis.Diagnostics;
-using PdxScriptAnalysis.Syntax;
-using PdxScriptAnalysis.Text;
-using System.Diagnostics.CodeAnalysis;
 using Victoria3.GameData;
 
 namespace Victoria3.Loading.Loaders

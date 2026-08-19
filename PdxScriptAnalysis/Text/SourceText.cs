@@ -1,6 +1,4 @@
-﻿using static System.Net.Mime.MediaTypeNames;
-
-namespace PdxScriptAnalysis.Text
+﻿namespace PdxScriptAnalysis.Text
 {
     /// <summary>
     /// パース対象のソーステキストを表す。
