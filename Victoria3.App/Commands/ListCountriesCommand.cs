@@ -43,22 +43,22 @@ namespace Victoria3.App.Commands
                     .Select(ScriptTree.ParseFile)
                     .ToList();
 
-                Console.WriteLine($"ディレクトリ\"{countryDataPath}\"のファイルを解析しました。診断結果: {scriptTrees.Sum(st => st.Diagnostics.Count)}件");
+                Console.WriteLine($"ディレクトリ\"{countryDataPath}\"のファイルを解析しました。\n診断件数: {scriptTrees.Sum(st => st.Diagnostics.Count)}件");
 
                 var output = new CountryLoader(scriptTrees).Load();
 
-                Console.WriteLine($"読み込んだ国の数: {output.Values.Count}、診断結果: {output.Diagnostics.Count}件");
+                Console.WriteLine($"{output.Values.Count}の国を読み込みました。\n診断件数: {output.Diagnostics.Count}件");
                 var localizationPath = Path.Combine(gameDir, LocalizationPaths.Japanese);
                 var localizer = FileLocalizer.FromDirectory(localizationPath);
 
                 foreach (var (index, country) in output.Values.Index())
                 {
-                    Console.WriteLine($"{index + 1,-4}: タグ: {country.Tag}, 名前: {localizer.Localize(country.Tag)}, 種別: {country.Type}, ティア: {country.Tier}");
+                    Console.WriteLine($"{index + 1,-4}: タグ: {country.Tag}, 種別: {country.Type, -13}, ティア: {country.Tier,-17}, 名前: {localizer.Localize(country.Tag)}");
                 }
 
                 foreach (var diagnostic in output.Diagnostics)
                 {
-                    Console.WriteLine($"診断結果: {diagnostic.Message} at {diagnostic.LinePosition}");
+                    Console.WriteLine($"診断結果: {diagnostic}");
                 }
             });
         }

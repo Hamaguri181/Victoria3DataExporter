@@ -26,9 +26,9 @@ namespace PdxScriptAnalysis
 
 
         /// <summary>
-        /// 解析中にエラーが発生したかどうか。
+        /// 解析中にエラーまたは警告が発生したかどうか。
         /// </summary>
-        public bool HasErrors => Diagnostics.Any(d => d.IsError);
+        public bool HasErrorsOrWarnings => Diagnostics.Any(d => d.IsError || d.IsWarning);
 
 
         // コンストラクタはprivateで、ファクトリメソッドを通じてのみインスタンス化される。
@@ -42,11 +42,18 @@ namespace PdxScriptAnalysis
 
         /// <summary>
         /// ファイルから解析を行うファクトリメソッド。指定されたファイルパスからソーステキストを読み込み、解析を行い、ScriptTreeのインスタンスを生成する。
+        /// 解析元ファイルのパスを診断情報に追加する。
         /// </summary>
         /// <param name="path">解析対象のファイルパス</param>
         /// <returns>解析結果を表すScriptTreeのインスタンス</returns>
         public static ScriptTree ParseFile(string path)
-            => ParseCore(SourceText.FromFile(path));
+        {
+            var tree = ParseCore(SourceText.FromFile(path));
+            var diagnosticsWithPath = tree.Diagnostics
+                .Select(d => d with { FilePath = path })
+                .ToList();
+            return new(tree.Source, tree.Root, diagnosticsWithPath);
+        }
 
         /// <summary>
         /// 文字列から解析を行うファクトリメソッド。指定された文字列をソーステキストとして解析を行い、ScriptTreeのインスタンスを生成する。

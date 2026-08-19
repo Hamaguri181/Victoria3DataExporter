@@ -15,6 +15,7 @@ namespace Victoria3.App
             rootCommand.Subcommands.Add(new ExportCommand());
 
 
+            // コマンドライン引数が指定されていない場合、ユーザーに入力を促す
             if (args.Length <= 0)
             {
                 string? input = null;

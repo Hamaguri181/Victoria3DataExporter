@@ -1,17 +1,28 @@
-﻿namespace PdxScriptAnalysis.Text
+﻿using static System.Net.Mime.MediaTypeNames;
+
+namespace PdxScriptAnalysis.Text
 {
     /// <summary>
     /// パース対象のソーステキストを表す。
     /// 文字列ラップ・行列変換キャッシュ・部分文字列取得を提供する。
+    /// ファイルから生成された場合はファイルパス情報も持つ。
     /// </summary>
     public sealed class SourceText
     {
-        private readonly string _text;
+        /// <summary>
+        /// パース対象のソーステキスト。
+        /// </summary>
+        public string Text { get; }
+        /// <summary>
+        /// ソーステキストが生成された元のファイルパス。ファイル以外から生成された場合はnull。
+        /// </summary>
+        public string? FilePath { get; private init; } = null;
 
 
+        // コンストラクタはprivateで、ファクトリメソッドを通じてのみインスタンス化される。
         private SourceText(string text)
         {
-            _text = text;
+            Text = text;
         }
 
 
@@ -38,36 +49,35 @@
         {
             ArgumentNullException.ThrowIfNull(path);
             var content = File.ReadAllText(path);
-            return From(content);
+            return new SourceText(content) { FilePath = path };
         }
-
 
         /// <summary>
         /// ソーステキストの長さ。
         /// </summary>
-        public int Length => _text.Length;
+        public int Length => Text.Length;
 
         /// <summary>
         /// ソーステキストの指定した位置の文字。インデックスが範囲外の場合はIndexOutOfRangeExceptionになる。
         /// </summary>
         /// <param name="index">取得する文字のインデックス。</param>
         /// <returns>指定したインデックスの文字。</returns>
-        public char this[int index] => _text[index];
+        public char this[int index] => Text[index];
 
 
         /// <summary>
-        /// テキストスパンに対応する部分文字列を含む新しい<see cref="SourceText"/>を返す。スパンが範囲外の場合はArgumentOutOfRangeExceptionになる。
+        /// テキストスパンに対応する部分文字列を返す。スパンが範囲外の場合はArgumentOutOfRangeExceptionになる。
         /// </summary>
         /// <param name="span">取得する部分文字列の範囲を表す<see cref="TextSpan"/>。</param>
-        /// <returns>指定した範囲の部分文字列を含む新しい<see cref="SourceText"/>。</returns>
+        /// <returns>指定した範囲の部分文字列。</returns>
         /// <exception cref="ArgumentOutOfRangeException">spanが範囲外の場合にスローされる。</exception>
         public string GetSubText(TextSpan span)
         {
             if (span.End > Length) throw new ArgumentOutOfRangeException(nameof(span), "TextSpan is out of range.");
             var spanLength = span.Length;
             return span.IsEmpty ? string.Empty :
-                spanLength == Length ? _text :
-                _text.Substring(span.Start, spanLength);
+                spanLength == Length ? Text :
+                Text.Substring(span.Start, spanLength);
         }
 
         /// <summary>
@@ -82,11 +92,11 @@
             int line = 0, character = 0;
             for (int i = 0; i < position; i++)
             {
-                if (_text[i] == '\r')
+                if (Text[i] == '\r')
                 {
                     continue;
                 }
-                else if (_text[i] == '\n')
+                else if (Text[i] == '\n')
                 {
                     line++;
                     character = 0;
@@ -119,11 +129,11 @@
                     return i;
                 }
 
-                if (_text[i] == '\r')
+                if (Text[i] == '\r')
                 {
                     continue;
                 }
-                else if (_text[i] == '\n')
+                else if (Text[i] == '\n')
                 {
                     line++;
                     character = 0;
@@ -137,6 +147,6 @@
             throw new ArgumentOutOfRangeException(nameof(linePosition), "LinePosition is out of range.");
         }
 
-        public override string ToString() => _text;
+        public override string ToString() => Text;
     }
 }

@@ -9,11 +9,13 @@ namespace PdxScriptAnalysis.Diagnostics
     /// <param name="Message">診断メッセージ。</param>
     /// <param name="Span">診断が発生したソースコードの範囲。</param>
     /// <param name="LinePosition">診断が発生した行位置情報。</param>
+    /// <param name="FilePath">解析データの元のファイルパス。ファイル以外からの解析の場合はnull。</param>
     public sealed record Diagnostic(
         DiagnosticSeverity Severity,
         string Message,
         TextSpan Span,
-        LinePosition LinePosition)
+        LinePosition LinePosition,
+        string? FilePath = null)
     {
         /// <summary>
         /// 診断の重大度が情報であるかどうか。
@@ -31,6 +33,6 @@ namespace PdxScriptAnalysis.Diagnostics
         public bool IsWarning => Severity == DiagnosticSeverity.Warning;
 
         public override string ToString()
-                => $"{Severity}: {Message} at {LinePosition}";
+                => $"{Severity}: {Message} at {LinePosition}{(FilePath is not null ? $" in {FilePath}" : "")}";
     }
 }

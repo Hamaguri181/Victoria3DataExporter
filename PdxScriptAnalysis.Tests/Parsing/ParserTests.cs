@@ -126,7 +126,7 @@ namespace PdxScriptAnalysis.Tests.Parsing
             var node = AssertSingleChild<BlockPropertyNode>(tree.Root);
             Assert.Equal("block", node.Key.Text);
 
-            Assert.True(tree.HasErrors);
+            Assert.True(tree.HasErrorsOrWarnings);
             var diag = Assert.Single(tree.Diagnostics);
             Assert.Equal("Unexpected end of file. Expected '}' to close the block.", diag.Message);
             Assert.Equal(DiagnosticSeverity.Error, diag.Severity);
@@ -143,7 +143,7 @@ namespace PdxScriptAnalysis.Tests.Parsing
             Assert.Equal("key", node.Key.Text);
             Assert.Equal("=", node.Operator.Text);
             Assert.Equal(SyntaxKind.Unknown, node.Value.Token.Kind);
-            Assert.True(tree.HasErrors);
+            Assert.True(tree.HasErrorsOrWarnings);
             var diag = Assert.Single(tree.Diagnostics);
             Assert.Equal("Invalid property value: \"\"", diag.Message);
             Assert.Equal(DiagnosticSeverity.Error, diag.Severity);
@@ -157,7 +157,7 @@ namespace PdxScriptAnalysis.Tests.Parsing
             var tree = ParseToTree("}");
             Assert.NotNull(tree.Root);
             Assert.Empty(tree.Root.Children);
-            Assert.True(tree.HasErrors);
+            Assert.True(tree.HasErrorsOrWarnings);
             var diag = Assert.Single(tree.Diagnostics);
             Assert.Equal("Unexpected token: \"}\"", diag.Message);
             Assert.Equal(DiagnosticSeverity.Error, diag.Severity);
@@ -170,7 +170,7 @@ namespace PdxScriptAnalysis.Tests.Parsing
         {
             var tree = ParseToTree("key = }\n block = { key2 = value2 ");
             Assert.NotNull(tree.Root);
-            Assert.True(tree.HasErrors);
+            Assert.True(tree.HasErrorsOrWarnings);
             Assert.Equal(3, tree.Diagnostics.Count);
 
             var diag1 = tree.Diagnostics[0];
@@ -197,7 +197,7 @@ namespace PdxScriptAnalysis.Tests.Parsing
         {
             var tree = ParseToTree("key = value\nblock = { innerKey = innerValue }");
             Assert.NotNull(tree.Root);
-            Assert.False(tree.HasErrors);
+            Assert.False(tree.HasErrorsOrWarnings);
             Assert.Empty(tree.Diagnostics);
         }
 
