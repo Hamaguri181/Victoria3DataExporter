@@ -101,6 +101,9 @@ namespace Victoria3.Loading.Loaders
                     case "tertiary_unit_color":
                         if (TryParseToGameColor(propertyNode, out var tertiaryUnitColor)) countryBuilder.TertiaryUnitColor = tertiaryUnitColor;
                         break;
+                    case "seal_and_signature_texture":
+                        if (TryParseToString(propertyNode, out var sealAndSignatureTexture)) countryBuilder.SealAndSignatureTexture = sealAndSignatureTexture;
+                        break;
                     case "dynamic_country_definition":
                         // dynamic_country_definition = yes のプロパティを持つ場合その国家は読み取らない
                         if (TryParseToBool(propertyNode, out var isDynamicCountryDefinition) && isDynamicCountryDefinition == true)
@@ -225,6 +228,7 @@ namespace Victoria3.Loading.Loaders
             internal GameColor? PrimaryUnitColor { get; set; }
             internal GameColor? SecondaryUnitColor { get; set; }
             internal GameColor? TertiaryUnitColor { get; set; }
+            internal string? SealAndSignatureTexture { get; set; }
 
 
             internal Country Build()
@@ -241,7 +245,8 @@ namespace Victoria3.Loading.Loaders
                     ValidAsHomeCountryForSeparatists: ValidAsHomeCountryForSeparatists,
                     PrimaryUnitColor: PrimaryUnitColor,
                     SecondaryUnitColor: SecondaryUnitColor,
-                    TertiaryUnitColor: TertiaryUnitColor);
+                    TertiaryUnitColor: TertiaryUnitColor,
+                    SealAndSignatureTexture: SealAndSignatureTexture);
 
             internal List<string> GetMissingRequiredProperties()
             {

@@ -27,9 +27,9 @@ namespace PdxScriptAnalysis
 
 
         /// <summary>
-        /// 解析中にエラーが発生したかどうか。
+        /// 解析中にエラーまたは警告が発生したかどうか。
         /// </summary>
-        public bool HasErrors => Diagnostics.Any(d => d.IsError);
+        public bool HasErrorsOrWarnings => Diagnostics.Any(d => d.IsError || d.IsWarning);
 
 
         // コンストラクタはprivateで、ファクトリメソッドを通じてのみインスタンス化される。
@@ -43,11 +43,18 @@ namespace PdxScriptAnalysis
 
         /// <summary>
         /// ファイルから解析を行うファクトリメソッド。指定されたファイルパスからソーステキストを読み込み、解析を行い、ScriptTreeのインスタンスを生成する。
+        /// 解析元ファイルのパスを診断情報に追加する。
         /// </summary>
         /// <param name="path">解析対象のファイルパス</param>
         /// <returns>解析結果を表すScriptTreeのインスタンス</returns>
         public static ScriptTree ParseFile(string path)
-            => ParseCore(SourceText.FromFile(path));
+        {
+            var tree = ParseCore(SourceText.FromFile(path));
+            var diagnosticsWithPath = tree.Diagnostics
+                .Select(d => d with { FilePath = path })
+                .ToList();
+            return new(tree.Source, tree.Root, diagnosticsWithPath);
+        }
 
         /// <summary>
         /// 文字列から解析を行うファクトリメソッド。指定された文字列をソーステキストとして解析を行い、ScriptTreeのインスタンスを生成する。
@@ -122,7 +129,7 @@ namespace PdxScriptAnalysis
     /// <param name="Kind">トークンの種類</param>
     /// <param name="Text">トークンのテキスト</param>
     /// <param name="Span">トークンの位置情報</param>
-    /// <param name="LinePosition">トークンの行位置情報</param>
+    /// <param name="LinePosition">トークンの行列位置情報</param>
     public readonly record struct SyntaxToken(SyntaxKind Kind, string Text, TextSpan Span, LinePosition LinePosition)
     {
         /// <summary>
@@ -217,11 +224,13 @@ namespace PdxScriptAnalysis.Diagnostics
     /// <param name="Message">診断メッセージ。</param>
     /// <param name="Span">診断が発生したソースコードの範囲。</param>
     /// <param name="LinePosition">診断が発生した行位置情報。</param>
+    /// <param name="FilePath">解析データの元のファイルパス。ファイル以外からの解析の場合はnull。</param>
     public sealed record Diagnostic(
         DiagnosticSeverity Severity,
         string Message,
         TextSpan Span,
-        LinePosition LinePosition)
+        LinePosition LinePosition,
+        string? FilePath = null)
     {
         /// <summary>
         /// 診断の重大度が情報であるかどうか。
@@ -239,7 +248,7 @@ namespace PdxScriptAnalysis.Diagnostics
         public bool IsWarning => Severity == DiagnosticSeverity.Warning;
 
         public override string ToString()
-                => $"{Severity}: {Message} at {LinePosition}";
+                => $"{Severity}: {Message} at {LinePosition}{(FilePath is not null ? $" in {FilePath}" : "")}";
     }
 }
 ```
@@ -295,13 +304,13 @@ namespace PdxScriptAnalysis.Lexing
         {
             SkipTrivia();
 
-            if (_position >= _source.Length) return MakeToken(SyntaxKind.EndOfFile, _position, 0);
+            if (_position >= _source.Length) return CreateToken(SyntaxKind.EndOfFile, _position, 0);
 
             return Current switch
             {
-                '{' => MakeToken(SyntaxKind.LeftBrace, _position++, 1),
-                '}' => MakeToken(SyntaxKind.RightBrace, _position++, 1),
-                '=' => MakeToken(SyntaxKind.Equals, _position++, 1),
+                '{' => CreateToken(SyntaxKind.LeftBrace, _position++, 1),
+                '}' => CreateToken(SyntaxKind.RightBrace, _position++, 1),
+                '=' => CreateToken(SyntaxKind.Equals, _position++, 1),
                 '<' => ReadLessThan(),
                 '>' => ReadGreaterThan(),
                 '!' => ReadNotEquals(),
@@ -318,9 +327,9 @@ namespace PdxScriptAnalysis.Lexing
             if (_position < _source.Length && Current == '=')
             {
                 Advance();
-                return MakeToken(SyntaxKind.LessThanEquals, start, 2);
+                return CreateToken(SyntaxKind.LessThanEquals, start, 2);
             }
-            return MakeToken(SyntaxKind.LessThan, start, 1);
+            return CreateToken(SyntaxKind.LessThan, start, 1);
         }
 
         private SyntaxToken ReadGreaterThan()
@@ -330,9 +339,9 @@ namespace PdxScriptAnalysis.Lexing
             if (_position < _source.Length && Current == '=')
             {
                 Advance();
-                return MakeToken(SyntaxKind.GreaterThanEquals, start, 2);
+                return CreateToken(SyntaxKind.GreaterThanEquals, start, 2);
             }
-            return MakeToken(SyntaxKind.GreaterThan, start, 1);
+            return CreateToken(SyntaxKind.GreaterThan, start, 1);
         }
 
         private SyntaxToken ReadNotEquals()
@@ -342,9 +351,9 @@ namespace PdxScriptAnalysis.Lexing
             if (_position < _source.Length && Current == '=')
             {
                 Advance();
-                return MakeToken(SyntaxKind.NotEquals, start, 2);
+                return CreateToken(SyntaxKind.NotEquals, start, 2);
             }
-            return MakeToken(SyntaxKind.Unknown, start, 1);
+            return CreateToken(SyntaxKind.Unknown, start, 1);
         }
 
         private SyntaxToken ReadQuestionEquals()
@@ -354,9 +363,9 @@ namespace PdxScriptAnalysis.Lexing
             if (_position < _source.Length && Current == '=')
             {
                 Advance();
-                return MakeToken(SyntaxKind.QuestionEquals, start, 2);
+                return CreateToken(SyntaxKind.QuestionEquals, start, 2);
             }
-            return MakeToken(SyntaxKind.Unknown, start, 1);
+            return CreateToken(SyntaxKind.Unknown, start, 1);
         }
 
         private SyntaxToken ReadStringLiteral()
@@ -370,13 +379,13 @@ namespace PdxScriptAnalysis.Lexing
             }
 
             // 終了の二重引用符が見つからない場合は、文字列リテラルの終わりまでをトークン化する
-            if (_position >= _source.Length) return MakeToken(SyntaxKind.Unknown, start, _position - start);
+            if (_position >= _source.Length) return CreateToken(SyntaxKind.Unknown, start, _position - start);
 
             if (_position < _source.Length)
             {
                 Advance(); // 終了の二重引用符をスキップ
             }
-            return MakeToken(SyntaxKind.StringLiteral, start, _position - start);
+            return CreateToken(SyntaxKind.StringLiteral, start, _position - start);
         }
 
         private SyntaxToken ReadAtom()
@@ -387,9 +396,9 @@ namespace PdxScriptAnalysis.Lexing
                 Advance();
             }
 
-            if (start == _position) return MakeToken(SyntaxKind.Unknown, _position++, 1);
+            if (start == _position) return CreateToken(SyntaxKind.Unknown, _position++, 1);
 
-            return MakeToken(SyntaxKind.Atom, start, _position - start);
+            return CreateToken(SyntaxKind.Atom, start, _position - start);
         }
 
         private static bool IsAtomChar(char c)
@@ -419,7 +428,7 @@ namespace PdxScriptAnalysis.Lexing
             }
         }
 
-        private SyntaxToken MakeToken(SyntaxKind kind, int start, int length)
+        private SyntaxToken CreateToken(SyntaxKind kind, int start, int length)
         {
             var span = new TextSpan(start, length);
             var text = _source.GetSubText(span);
@@ -1081,15 +1090,24 @@ namespace PdxScriptAnalysis.Text
     /// <summary>
     /// パース対象のソーステキストを表す。
     /// 文字列ラップ・行列変換キャッシュ・部分文字列取得を提供する。
+    /// ファイルから生成された場合はファイルパス情報も持つ。
     /// </summary>
     public sealed class SourceText
     {
-        private readonly string _text;
+        /// <summary>
+        /// パース対象のソーステキスト。
+        /// </summary>
+        public string Text { get; }
+        /// <summary>
+        /// ソーステキストが生成された元のファイルパス。ファイル以外から生成された場合はnull。
+        /// </summary>
+        public string? FilePath { get; private init; } = null;
 
 
+        // コンストラクタはprivateで、ファクトリメソッドを通じてのみインスタンス化される。
         private SourceText(string text)
         {
-            _text = text;
+            Text = text;
         }
 
 
@@ -1116,36 +1134,35 @@ namespace PdxScriptAnalysis.Text
         {
             ArgumentNullException.ThrowIfNull(path);
             var content = File.ReadAllText(path);
-            return From(content);
+            return new SourceText(content) { FilePath = path };
         }
-
 
         /// <summary>
         /// ソーステキストの長さ。
         /// </summary>
-        public int Length => _text.Length;
+        public int Length => Text.Length;
 
         /// <summary>
         /// ソーステキストの指定した位置の文字。インデックスが範囲外の場合はIndexOutOfRangeExceptionになる。
         /// </summary>
         /// <param name="index">取得する文字のインデックス。</param>
         /// <returns>指定したインデックスの文字。</returns>
-        public char this[int index] => _text[index];
+        public char this[int index] => Text[index];
 
 
         /// <summary>
-        /// テキストスパンに対応する部分文字列を含む新しい<see cref="SourceText"/>を返す。スパンが範囲外の場合はArgumentOutOfRangeExceptionになる。
+        /// テキストスパンに対応する部分文字列を返す。スパンが範囲外の場合はArgumentOutOfRangeExceptionになる。
         /// </summary>
         /// <param name="span">取得する部分文字列の範囲を表す<see cref="TextSpan"/>。</param>
-        /// <returns>指定した範囲の部分文字列を含む新しい<see cref="SourceText"/>。</returns>
+        /// <returns>指定した範囲の部分文字列。</returns>
         /// <exception cref="ArgumentOutOfRangeException">spanが範囲外の場合にスローされる。</exception>
         public string GetSubText(TextSpan span)
         {
             if (span.End > Length) throw new ArgumentOutOfRangeException(nameof(span), "TextSpan is out of range.");
             var spanLength = span.Length;
             return span.IsEmpty ? string.Empty :
-                spanLength == Length ? _text :
-                _text.Substring(span.Start, spanLength);
+                spanLength == Length ? Text :
+                Text.Substring(span.Start, spanLength);
         }
 
         /// <summary>
@@ -1160,11 +1177,11 @@ namespace PdxScriptAnalysis.Text
             int line = 0, character = 0;
             for (int i = 0; i < position; i++)
             {
-                if (_text[i] == '\r')
+                if (Text[i] == '\r')
                 {
                     continue;
                 }
-                else if (_text[i] == '\n')
+                else if (Text[i] == '\n')
                 {
                     line++;
                     character = 0;
@@ -1197,11 +1214,11 @@ namespace PdxScriptAnalysis.Text
                     return i;
                 }
 
-                if (_text[i] == '\r')
+                if (Text[i] == '\r')
                 {
                     continue;
                 }
-                else if (_text[i] == '\n')
+                else if (Text[i] == '\n')
                 {
                     line++;
                     character = 0;
@@ -1215,7 +1232,7 @@ namespace PdxScriptAnalysis.Text
             throw new ArgumentOutOfRangeException(nameof(linePosition), "LinePosition is out of range.");
         }
 
-        public override string ToString() => _text;
+        public override string ToString() => Text;
     }
 }
 ```
@@ -1774,7 +1791,7 @@ namespace PdxScriptAnalysis.Tests.Parsing
             var node = AssertSingleChild<BlockPropertyNode>(tree.Root);
             Assert.Equal("block", node.Key.Text);
 
-            Assert.True(tree.HasErrors);
+            Assert.True(tree.HasErrorsOrWarnings);
             var diag = Assert.Single(tree.Diagnostics);
             Assert.Equal("Unexpected end of file. Expected '}' to close the block.", diag.Message);
             Assert.Equal(DiagnosticSeverity.Error, diag.Severity);
@@ -1791,7 +1808,7 @@ namespace PdxScriptAnalysis.Tests.Parsing
             Assert.Equal("key", node.Key.Text);
             Assert.Equal("=", node.Operator.Text);
             Assert.Equal(SyntaxKind.Unknown, node.Value.Token.Kind);
-            Assert.True(tree.HasErrors);
+            Assert.True(tree.HasErrorsOrWarnings);
             var diag = Assert.Single(tree.Diagnostics);
             Assert.Equal("Invalid property value: \"\"", diag.Message);
             Assert.Equal(DiagnosticSeverity.Error, diag.Severity);
@@ -1805,7 +1822,7 @@ namespace PdxScriptAnalysis.Tests.Parsing
             var tree = ParseToTree("}");
             Assert.NotNull(tree.Root);
             Assert.Empty(tree.Root.Children);
-            Assert.True(tree.HasErrors);
+            Assert.True(tree.HasErrorsOrWarnings);
             var diag = Assert.Single(tree.Diagnostics);
             Assert.Equal("Unexpected token: \"}\"", diag.Message);
             Assert.Equal(DiagnosticSeverity.Error, diag.Severity);
@@ -1818,7 +1835,7 @@ namespace PdxScriptAnalysis.Tests.Parsing
         {
             var tree = ParseToTree("key = }\n block = { key2 = value2 ");
             Assert.NotNull(tree.Root);
-            Assert.True(tree.HasErrors);
+            Assert.True(tree.HasErrorsOrWarnings);
             Assert.Equal(3, tree.Diagnostics.Count);
 
             var diag1 = tree.Diagnostics[0];
@@ -1845,7 +1862,7 @@ namespace PdxScriptAnalysis.Tests.Parsing
         {
             var tree = ParseToTree("key = value\nblock = { innerKey = innerValue }");
             Assert.NotNull(tree.Root);
-            Assert.False(tree.HasErrors);
+            Assert.False(tree.HasErrorsOrWarnings);
             Assert.Empty(tree.Diagnostics);
         }
 
@@ -1967,6 +1984,20 @@ namespace Victoria3.App
             rootCommand.Subcommands.Add(new InitCommand());
             rootCommand.Subcommands.Add(new ConfigCommand());
             rootCommand.Subcommands.Add(new ListCommand());
+            rootCommand.Subcommands.Add(new ExportCommand());
+
+
+            // コマンドライン引数が指定されていない場合、ユーザーに入力を促す
+            if (args.Length <= 0)
+            {
+                string? input = null;
+                while (input is null)
+                {
+                    Console.WriteLine("コマンドを入力してください");
+                    input = Console.ReadLine();
+                }
+                args = input.Split(" ");
+            }
 
             return await rootCommand.Parse(args).InvokeAsync();
         }
@@ -2105,6 +2136,475 @@ namespace Victoria3.App.Commands
 }
 ```
 
+```Victoria3.App\Commands\ExportCommand.cs
+using System.CommandLine;
+
+namespace Victoria3.App.Commands
+{
+    internal class ExportCommand : Command
+    {
+        internal ExportCommand() : base("export", "指定したゲームデータをCSV形式でエクスポートします")
+        {
+            this.Subcommands.Add(new ExportCountriesCommand());
+            this.Subcommands.Add(new ExportFormableCountriesCommand());
+            this.Subcommands.Add(new ExportReleasableCountriesCommand());
+            this.Subcommands.Add(new ExportHistoricalStateRegionCommand());
+        }
+    }
+}
+```
+
+```Victoria3.App\Commands\ExportCountriesCommand.cs
+using PdxScriptAnalysis;
+using System.CommandLine;
+using Tomlyn;
+using Victoria3.App.Config;
+using Victoria3.App.Options;
+using Victoria3.Formatting;
+using Victoria3.Formatting.PukiwikiFormatters;
+using Victoria3.GameData;
+using Victoria3.Loading;
+using Victoria3.Loading.Loaders;
+using Victoria3.Localization;
+
+namespace Victoria3.App.Commands
+{
+    internal class ExportCountriesCommand : Command
+    {
+        internal ExportCountriesCommand() : base("countries", "ゲーム内の国のデータをエクスポートします")
+        {
+            var formatOption = new FormatOption();
+            var languageOption = new LanguageOption();
+
+            this.Options.Add(formatOption);
+            this.Options.Add(languageOption);
+
+            this.SetAction(async parseResult =>
+            {
+                var format = parseResult.GetValue(formatOption);
+                var language = parseResult.GetValue(languageOption);
+
+                Console.WriteLine($"国のデータを{format}形式でエクスポートしています...");
+
+                // 設定ファイルの読み込み
+                var configPath = Path.Combine(Environment.CurrentDirectory, "vic3tool.toml");
+                var config = new AppConfig();
+                if (File.Exists(configPath))
+                {
+                    var configText = File.ReadAllText(configPath);
+                    config = TomlSerializer.Deserialize<AppConfig>(configText);
+                }
+                else
+                {
+                    Console.WriteLine("設定ファイルが見つかりません。");
+                    Console.WriteLine("設定ファイルのパス: " + configPath);
+                    return;
+                }
+                if (config is null)
+                {
+                    Console.WriteLine("設定ファイルの読み込みに失敗しました。");
+                    return;
+                }
+
+                var gameDir = config.Game.Directory;
+                var output = LoadCountries(gameDir);
+
+                var localizationPath = Path.Combine(gameDir, LocalizationPaths.GetPath(language!));
+                var localizer = FileLocalizer.FromDirectory(localizationPath);
+
+                if (format == "csv")
+                {
+                    var text = CsvFormatter<Country>.Format(output.Values, localizer);
+                    var outputDir = Path.Combine(Environment.CurrentDirectory, config.Output.Directory);
+                    if (!Directory.Exists(outputDir))
+                    {
+                        Directory.CreateDirectory(outputDir);
+                    }
+                    var outputPath = Path.Combine(outputDir, "countries.csv");
+                    File.WriteAllText(outputPath, text);
+                }
+                else if (format == "pukiwiki")
+                {
+                    var historicalStateRegionsOutput = ExportHistoricalStateRegionCommand.LoadHistoricalStateRegions(gameDir);
+                    var releasableCountriesOutput = ExportReleasableCountriesCommand.LoadReleasableCountries(gameDir);
+                    var formableCountriesOutput = ExportFormableCountriesCommand.LoadFormableCountries(gameDir);
+
+                    var englishLocalizationPath = Path.Combine(gameDir, LocalizationPaths.English);
+                    var englishLocalizer = FileLocalizer.FromDirectory(englishLocalizationPath);
+
+                    var formatter = new CountryPukiwikiFormatter();
+                    var text = formatter.Format(output.Values, historicalStateRegionsOutput.Values, releasableCountriesOutput.Values, formableCountriesOutput.Values, localizer, englishLocalizer);
+
+                    var outputDir = Path.Combine(Environment.CurrentDirectory, config.Output.Directory);
+                    if (!Directory.Exists(outputDir))
+                    {
+                        Directory.CreateDirectory(outputDir);
+                    }
+
+                    var outputPath = Path.Combine(outputDir, "countries.txt");
+                    File.WriteAllText(outputPath, text);
+                }
+                else
+                {
+                    Console.WriteLine($"サポートされていないフォーマット: {format}");
+                }
+            });
+        }
+
+        internal static LoadOutput<Country> LoadCountries(string gameDir)
+        {
+            var countryDataPath = Path.Combine(gameDir, Victoria3Paths.CountryDefinitions);
+            // 解析
+            var scriptTrees = Directory.EnumerateFiles(countryDataPath, "*.txt").Select(ScriptTree.ParseFile).ToList();
+            Console.WriteLine($"ファイル\"{countryDataPath}\"を解析しました。診断結果: {scriptTrees.Sum(st => st.Diagnostics.Count)}件");
+            // ロード
+            var output = new CountryLoader(scriptTrees).Load();
+            Console.WriteLine($"読み込んだ国の数: {output.Values.Count}、診断結果: {output.Diagnostics.Count}件");
+            foreach (var diagnostic in output.Diagnostics)
+            {
+                Console.WriteLine($"診断結果: {diagnostic.Message} at {diagnostic.LinePosition}");
+            }
+            return output;
+        }
+    }
+}
+```
+
+```Victoria3.App\Commands\ExportFormableCountriesCommand.cs
+using PdxScriptAnalysis;
+using System.CommandLine;
+using Tomlyn;
+using Victoria3.App.Config;
+using Victoria3.App.Options;
+using Victoria3.Formatting;
+using Victoria3.Formatting.PukiwikiFormatters;
+using Victoria3.GameData;
+using Victoria3.Loading;
+using Victoria3.Loading.Loaders;
+using Victoria3.Localization;
+
+namespace Victoria3.App.Commands
+{
+    internal class ExportFormableCountriesCommand : Command
+    {
+        internal ExportFormableCountriesCommand() : base("formable-countries", "ゲーム内の形成可能な国のデータをエクスポートします")
+        {
+            var formatOption = new FormatOption();
+            var languageOption = new LanguageOption();
+
+            this.Options.Add(formatOption);
+            this.Options.Add(languageOption);
+
+            this.SetAction(async parseResult =>
+            {
+                var format = parseResult.GetValue(formatOption);
+                var language = parseResult.GetValue(languageOption);
+
+                Console.WriteLine($"解放可能国家のデータを{format}形式でエクスポートしています...");
+
+                // 設定ファイルの読み込み
+                var configPath = Path.Combine(Environment.CurrentDirectory, "vic3tool.toml");
+                var config = new AppConfig();
+                if (File.Exists(configPath))
+                {
+                    var configText = File.ReadAllText(configPath);
+                    config = TomlSerializer.Deserialize<AppConfig>(configText);
+                }
+                else
+                {
+                    Console.WriteLine("設定ファイルが見つかりません。");
+                    Console.WriteLine("設定ファイルのパス: " + configPath);
+                    return;
+                }
+                if (config is null)
+                {
+                    Console.WriteLine("設定ファイルの読み込みに失敗しました。");
+                    return;
+                }
+
+                // ゲームディレクトリとゲームデータのパス
+                var gameDir = config.Game.Directory;
+                var output = LoadFormableCountries(gameDir);
+
+                var localizationPath = Path.Combine(gameDir, LocalizationPaths.GetPath(language!));
+                var localizer = FileLocalizer.FromDirectory(localizationPath);
+
+                if (format == "csv")
+                {
+                    var text = CsvFormatter<FormableCountry>.Format(output.Values, localizer);
+                    var outputDir = Path.Combine(Environment.CurrentDirectory, config.Output.Directory);
+                    if (!Directory.Exists(outputDir))
+                    {
+                        Directory.CreateDirectory(outputDir);
+                    }
+                    var outputPath = Path.Combine(outputDir, "formable_countries.csv");
+                    File.WriteAllText(outputPath, text);
+                }
+                else if (format == "pukiwiki")
+                {
+                    var englishLocalizationPath = Path.Combine(gameDir, LocalizationPaths.English);
+                    var englishLocalizer = FileLocalizer.FromDirectory(englishLocalizationPath);
+
+                    var formatter = new FormableCountryPukiwikiFormatter();
+                    var text = formatter.Format(output.Values, localizer);
+
+                    var outputDir = Path.Combine(Environment.CurrentDirectory, config.Output.Directory);
+                    if (!Directory.Exists(outputDir))
+                    {
+                        Directory.CreateDirectory(outputDir);
+                    }
+
+                    var outputPath = Path.Combine(outputDir, "formable_countries.txt");
+                    File.WriteAllText(outputPath, text);
+                }
+                else
+                {
+                    Console.WriteLine($"サポートされていないフォーマット: {format}");
+                }
+            });
+        }
+
+        internal static LoadOutput<FormableCountry> LoadFormableCountries(string gameDir)
+        {
+            var countryDataPath = Path.Combine(gameDir, Victoria3Paths.CountryFormation);
+            // 解析
+            var scriptTrees = Directory.EnumerateFiles(countryDataPath, "*.txt").Select(ScriptTree.ParseFile).ToList();
+            Console.WriteLine($"ファイル\"{countryDataPath}\"を解析しました。診断結果: {scriptTrees.Sum(st => st.Diagnostics.Count)}件");
+            // ロード
+            var output = new FormableCountryLoader(scriptTrees).Load();
+            Console.WriteLine($"読み込んだ形成可能国家の数: {output.Values.Count}、診断結果: {output.Diagnostics.Count}件");
+            foreach (var diagnostic in output.Diagnostics)
+            {
+                Console.WriteLine($"診断結果: {diagnostic.Message} at {diagnostic.LinePosition}");
+            }
+            return output;
+        }
+    }
+}
+```
+
+```Victoria3.App\Commands\ExportHistoricalStateRegionCommand.cs
+using PdxScriptAnalysis;
+using System.CommandLine;
+using Tomlyn;
+using Victoria3.App.Config;
+using Victoria3.App.Options;
+using Victoria3.Formatting;
+using Victoria3.Formatting.PukiwikiFormatters;
+using Victoria3.GameData;
+using Victoria3.Loading;
+using Victoria3.Loading.Loaders;
+using Victoria3.Localization;
+
+namespace Victoria3.App.Commands
+{
+    internal class ExportHistoricalStateRegionCommand : Command
+    {
+        internal ExportHistoricalStateRegionCommand() : base("historical-state-region", "ゲーム内の歴史的州地域のデータをエクスポートします")
+        {
+            var formatOption = new FormatOption();
+            var languageOption = new LanguageOption();
+
+            this.Options.Add(formatOption);
+            this.Options.Add(languageOption);
+
+            this.SetAction(async parseResult =>
+            {
+                var format = parseResult.GetValue(formatOption);
+                var language = parseResult.GetValue(languageOption);
+
+                Console.WriteLine($"歴史的州地域のデータを{format}形式でエクスポートしています...");
+
+                // 設定ファイルの読み込み
+                var configPath = Path.Combine(Environment.CurrentDirectory, "vic3tool.toml");
+                var config = new AppConfig();
+                if (File.Exists(configPath))
+                {
+                    var configText = File.ReadAllText(configPath);
+                    config = TomlSerializer.Deserialize<AppConfig>(configText);
+                }
+                else
+                {
+                    Console.WriteLine("設定ファイルが見つかりません。");
+                    Console.WriteLine("設定ファイルのパス: " + configPath);
+                    return;
+                }
+                if (config is null)
+                {
+                    Console.WriteLine("設定ファイルの読み込みに失敗しました。");
+                    return;
+                }
+
+                var gameDir = config.Game.Directory;
+                var output = LoadHistoricalStateRegions(gameDir);
+
+                var localizationPath = Path.Combine(gameDir, LocalizationPaths.GetPath(language!));
+                var localizer = FileLocalizer.FromDirectory(localizationPath);
+
+                if (format == "csv")
+                {
+                    var text = CsvFormatter<HistoricalStateRegion>.Format(output.Values, localizer);
+                    var outputDir = Path.Combine(Environment.CurrentDirectory, config.Output.Directory);
+                    if (!Directory.Exists(outputDir))
+                    {
+                        Directory.CreateDirectory(outputDir);
+                    }
+                    var outputPath = Path.Combine(outputDir, "historical_state_regions.csv");
+                    File.WriteAllText(outputPath, text);
+                }
+                else if (format == "pukiwiki")
+                {
+                    var formatter = new HistoricalStateRegionPukiwikiFormatter();
+                    var text = formatter.Format(output.Values, localizer);
+
+                    var outputDir = Path.Combine(Environment.CurrentDirectory, config.Output.Directory);
+                    if (!Directory.Exists(outputDir))
+                    {
+                        Directory.CreateDirectory(outputDir);
+                    }
+
+                    var outputPath = Path.Combine(outputDir, "historical_state_regions.txt");
+                    File.WriteAllText(outputPath, text);
+                }
+                else
+                {
+                    Console.WriteLine($"サポートされていないフォーマット: {format}");
+                }
+            });
+        }
+
+        internal static LoadOutput<HistoricalStateRegion> LoadHistoricalStateRegions(string gameDir)
+        {
+            var historicalStatesDataPath = Path.Combine(gameDir, Victoria3Paths.HistoricalStates);
+            // 解析
+            var scriptTrees = Directory.EnumerateFiles(historicalStatesDataPath, "*.txt").Select(ScriptTree.ParseFile).ToList();
+            Console.WriteLine($"ファイル\"{historicalStatesDataPath}\"を解析しました。診断結果: {scriptTrees.Sum(st => st.Diagnostics.Count)}件");
+            // ロード
+            var output = new HistoricalStateRegionLoader(scriptTrees).Load();
+            Console.WriteLine($"読み込んだ歴史的州地域の数: {output.Values.Count}、診断結果: {output.Diagnostics.Count}件");
+            foreach (var diagnostic in output.Diagnostics)
+            {
+                Console.WriteLine($"診断結果: {diagnostic.Message} at {diagnostic.LinePosition}");
+            }
+            return output;
+        }
+    }
+}
+```
+
+```Victoria3.App\Commands\ExportReleasableCountriesCommand.cs
+using PdxScriptAnalysis;
+using System.CommandLine;
+using Tomlyn;
+using Victoria3.App.Config;
+using Victoria3.App.Options;
+using Victoria3.Formatting;
+using Victoria3.Formatting.PukiwikiFormatters;
+using Victoria3.GameData;
+using Victoria3.Loading;
+using Victoria3.Loading.Loaders;
+using Victoria3.Localization;
+
+namespace Victoria3.App.Commands
+{
+    internal class ExportReleasableCountriesCommand : Command
+    {
+        internal ExportReleasableCountriesCommand() : base("releasable-countries", "ゲーム内の解放可能な国のデータをエクスポートします")
+        {
+            var formatOption = new FormatOption();
+            var languageOption = new LanguageOption();
+
+            this.Options.Add(formatOption);
+            this.Options.Add(languageOption);
+
+            this.SetAction(async parseResult =>
+            {
+                var format = parseResult.GetValue(formatOption);
+                var language = parseResult.GetValue(languageOption);
+
+                Console.WriteLine($"解放可能国家のデータを{format}形式でエクスポートしています...");
+
+                // 設定ファイルの読み込み
+                var configPath = Path.Combine(Environment.CurrentDirectory, "vic3tool.toml");
+                var config = new AppConfig();
+                if (File.Exists(configPath))
+                {
+                    var configText = File.ReadAllText(configPath);
+                    config = TomlSerializer.Deserialize<AppConfig>(configText);
+                }
+                else
+                {
+                    Console.WriteLine("設定ファイルが見つかりません。");
+                    Console.WriteLine("設定ファイルのパス: " + configPath);
+                    return;
+                }
+                if (config is null)
+                {
+                    Console.WriteLine("設定ファイルの読み込みに失敗しました。");
+                    return;
+                }
+
+                // ゲームディレクトリとゲームデータのパス
+                var gameDir = config.Game.Directory;
+                var output = LoadReleasableCountries(gameDir);
+
+                var localizationPath = Path.Combine(gameDir, LocalizationPaths.GetPath(language!));
+                var localizer = FileLocalizer.FromDirectory(localizationPath);
+
+                if (format == "csv")
+                {
+                    var text = CsvFormatter<ReleasableCountry>.Format(output.Values, localizer);
+                    var outputDir = Path.Combine(Environment.CurrentDirectory, config.Output.Directory);
+                    if (!Directory.Exists(outputDir))
+                    {
+                        Directory.CreateDirectory(outputDir);
+                    }
+                    var outputPath = Path.Combine(outputDir, "releasable_countries.csv");
+                    File.WriteAllText(outputPath, text);
+                }
+                else if (format == "pukiwiki")
+                {
+                    var englishLocalizationPath = Path.Combine(gameDir, LocalizationPaths.English);
+                    var englishLocalizer = FileLocalizer.FromDirectory(englishLocalizationPath);
+
+                    var formatter = new ReleasableCountryPukiwikiFormatter();
+                    var text = formatter.Format(output.Values, localizer);
+
+                    var outputDir = Path.Combine(Environment.CurrentDirectory, config.Output.Directory);
+                    if (!Directory.Exists(outputDir))
+                    {
+                        Directory.CreateDirectory(outputDir);
+                    }
+
+                    var outputPath = Path.Combine(outputDir, "releasable_countries.txt");
+                    File.WriteAllText(outputPath, text);
+                }
+                else
+                {
+                    Console.WriteLine($"サポートされていないフォーマット: {format}");
+                }
+            });
+        }
+
+        internal static LoadOutput<ReleasableCountry> LoadReleasableCountries(string gameDir)
+        {
+            var countryDataPath = Path.Combine(gameDir, Victoria3Paths.CountryCreation);
+            // 解析
+            var scriptTrees = Directory.EnumerateFiles(countryDataPath, "*.txt").Select(ScriptTree.ParseFile).ToList();
+            Console.WriteLine($"ファイル\"{countryDataPath}\"を解析しました。診断結果: {scriptTrees.Sum(st => st.Diagnostics.Count)}件");
+            // ロード
+            var output = new ReleasableCountryLoader(scriptTrees).Load();
+            Console.WriteLine($"読み込んだ解放可能国家の数: {output.Values.Count}、診断結果: {output.Diagnostics.Count}件");
+            foreach (var diagnostic in output.Diagnostics)
+            {
+                Console.WriteLine($"診断結果: {diagnostic.Message} at {diagnostic.LinePosition}");
+            }
+            return output;
+        }
+    }
+}
+```
+
 ```Victoria3.App\Commands\InitCommand.cs
 using System.CommandLine;
 using Tomlyn;
@@ -2171,18 +2671,16 @@ namespace Victoria3.App.Commands
 
                 var configPath = Path.Combine(Environment.CurrentDirectory, "vic3tool.toml");
 
-                var config = new AppConfig();
-                if (File.Exists(configPath))
-                {
-                    var configText = File.ReadAllText(configPath);
-                    config = TomlSerializer.Deserialize<AppConfig>(configText);
-                }
-                else
+                if (!File.Exists(configPath))
                 {
                     Console.WriteLine("設定ファイルが見つかりません。");
                     Console.WriteLine("設定ファイルのパス: " + configPath);
                     return;
                 }
+
+                var config = new AppConfig();
+                var configText = File.ReadAllText(configPath);
+                config = TomlSerializer.Deserialize<AppConfig>(configText);
 
                 if (config is null)
                 {
@@ -2194,24 +2692,26 @@ namespace Victoria3.App.Commands
 
                 var countryDataPath = Path.Combine(gameDir, Victoria3Paths.CountryDefinitions);
 
-                var scriptTrees = Directory.EnumerateFiles(countryDataPath, "*.txt").Select(ScriptTree.ParseFile).ToList();
+                var scriptTrees = Directory.EnumerateFiles(countryDataPath, "*.txt")
+                    .Select(ScriptTree.ParseFile)
+                    .ToList();
 
-                Console.WriteLine($"ファイル\"{countryDataPath}\"を解析しました。診断結果: {scriptTrees.Sum(st => st.Diagnostics.Count)}件");
+                Console.WriteLine($"ディレクトリ\"{countryDataPath}\"のファイルを解析しました。\n診断件数: {scriptTrees.Sum(st => st.Diagnostics.Count)}件");
 
                 var output = new CountryLoader(scriptTrees).Load();
 
-                Console.WriteLine($"読み込んだ国の数: {output.Values.Count}、診断結果: {output.Diagnostics.Count}件");
+                Console.WriteLine($"{output.Values.Count}の国を読み込みました。\n診断件数: {output.Diagnostics.Count}件");
                 var localizationPath = Path.Combine(gameDir, LocalizationPaths.Japanese);
                 var localizer = FileLocalizer.FromDirectory(localizationPath);
 
                 foreach (var (index, country) in output.Values.Index())
                 {
-                    Console.WriteLine($"{index + 1,-4}: タグ: {country.Tag}, 名前: {localizer.Localize(country.Tag)}, 種別: {country.Type}, ティア: {country.Tier}");
+                    Console.WriteLine($"{index + 1,-4}: タグ: {country.Tag}, 種別: {country.Type, -13}, ティア: {country.Tier,-17}, 名前: {localizer.Localize(country.Tag)}");
                 }
 
                 foreach (var diagnostic in output.Diagnostics)
                 {
-                    Console.WriteLine($"診断結果: {diagnostic.Message} at {diagnostic.LinePosition}");
+                    Console.WriteLine($"診断結果: {diagnostic}");
                 }
             });
         }
@@ -2250,6 +2750,270 @@ namespace Victoria3.App.Config
 }
 ```
 
+```Victoria3.App\Options\FormatOption.cs
+using System.CommandLine;
+
+namespace Victoria3.App.Options
+{
+    internal class FormatOption : Option<string>
+    {
+        internal FormatOption() : base("--format", "-f")
+        {
+            Description = "エクスポートするフォーマット。現在は\"csv\"と\"pukiwiki\"のみサポートされています。";
+            DefaultValueFactory = _ => "pukiwiki";
+        }
+    }
+}
+```
+
+```Victoria3.App\Options\LanguageOption.cs
+using System.CommandLine;
+
+namespace Victoria3.App.Options
+{
+    internal class LanguageOption : Option<string>
+    {
+        internal LanguageOption() : base("--language", "-l")
+        {
+            Description = "エクスポートするローカライズの言語。現在は\"japanese\"と\"english\"のみサポートされています。";
+            DefaultValueFactory = _ => "japanese";
+        }
+    }
+}
+```
+
+```Victoria3.Formatting\CsvFormatter.cs
+using System.Collections;
+using System.Text;
+using Victoria3.GameData;
+using Victoria3.Localization;
+
+namespace Victoria3.Formatting
+{
+    /// <summary>
+    /// ゲームデータのコレクションをCSV形式の文字列にフォーマットするクラス。
+    /// 対象とするゲームデータの型は、<see cref="IPropertySchemaProvider{T}"/>を実装している必要がある。
+    /// </summary>
+    /// <typeparam name="T">ゲームデータの型。<see cref="IPropertySchemaProvider{T}"/>を実装している必要がある。</typeparam>
+    public static class CsvFormatter<T> where T : IPropertySchemaProvider<T>
+    {
+        /// <summary>
+        /// ゲームデータのコレクションをCSV形式の文字列にフォーマットする。
+        /// </summary>
+        /// <param name="items">フォーマットするゲームデータのコレクション。</param>
+        /// <param name="localizer">ローカライゼーション用のローカライザー。指定しない場合はローカライズされない。</param>
+        /// <returns>CSV形式の文字列。</returns>
+        public static string Format(IEnumerable<T> items, ILocalizer? localizer = null)
+        {
+            var sb = new StringBuilder();
+
+            // ヘッダー行
+            sb.AppendLine(string.Join(",", T.PropertySchemas.Select(s => Escape(s.DisplayName))));
+
+            foreach (var item in items)
+            {
+                var row = T.PropertySchemas.Select(s =>
+                {
+                    var value = s.LocalizationKeyGetter?.Invoke(item) ?? s.Getter(item);
+                    return FormatCell(value, localizer);
+                });
+
+                sb.AppendLine(string.Join(",", row));
+            }
+            return sb.ToString();
+        }
+
+        // セルの値を文字列に変換し、必要に応じてローカライズしてエスケープする。
+        private static string FormatCell(object? value, ILocalizer? localizer)
+        {
+            switch (value)
+            {
+                case null:
+                    return string.Empty;
+                case string str:
+                    return Escape(Localize(str, localizer));
+                case IEnumerable<string> strings:
+                    var localizedStrings = strings.Select(s => Localize(s, localizer));
+                    return Escape(string.Join(", ", localizedStrings));
+                case IEnumerable enumerable when value is not string:
+                    var localizedItems = enumerable
+                        .Cast<object?>()
+                        .Select(o => o?.ToString() ?? string.Empty);
+                    return Escape(string.Join(", ", localizedItems));
+                default:
+                    var text = value.ToString() ?? string.Empty;
+                    return Escape(text);
+            }
+        }
+
+        private static string Localize(string text, ILocalizer? localizer)
+            => localizer?.Localize(text) ?? text;
+
+        // CSVのセルの値をエスケープする。値にカンマ、ダブルクォート、改行が含まれている場合は、ダブルクォートで囲み、ダブルクォート自体は2つにする。
+        private static string Escape(string text)
+        {
+            if (text.Contains(',') || text.Contains('"') || text.Contains('\n') || text.Contains('\r'))
+            {
+                return $"\"{text.Replace("\"", "\"\"")}\"";
+            }
+
+            return text;
+        }
+    }
+}
+```
+
+```Victoria3.Formatting\PukiwikiFormatters\CountryPukiwikiFormatter.cs
+using System.Collections.Frozen;
+using System.Text;
+using Victoria3.GameData;
+using Victoria3.Localization;
+
+namespace Victoria3.Formatting.PukiwikiFormatters
+{
+    public sealed class CountryPukiwikiFormatter()
+    {
+        public string Format(
+            IEnumerable<Country> items,
+            IEnumerable<HistoricalStateRegion> historicalStateRegions,
+            IEnumerable<ReleasableCountry> releasableCountries,
+            IEnumerable<FormableCountry> formableCountries,
+            ILocalizer localizer,
+            ILocalizer englishLocalizer)
+        {
+            var sb = new StringBuilder();
+
+            sb.AppendLine("|||||50|65|||||35|35|35|c");
+            sb.AppendLine("||タグ|>|国名|種別|ティア|主要文化|国教((第一主要文化の文化宗教と異なる場合のみ記載))|ヒエラルキー|首都|初期存在|解放可能|形成可能|h");
+
+            var initialTags = historicalStateRegions
+                .SelectMany(hsr => hsr.CreateStates)
+                .Select(cs => RemovePrefix(cs.Country))
+                .ToFrozenSet();
+            var releasableTags = releasableCountries.Select(rc => rc.Tag).ToFrozenSet();
+            var formableTags = formableCountries.Select(fc => fc.Tag).ToFrozenSet();
+            foreach (var country in items)
+            {
+                var englishName = englishLocalizer.Localize(country.Tag);
+                var name = localizer.Localize(country.Tag);
+                var countryType = localizer.Localize(country.Type.ToLocalizationKey());
+                var tier = localizer.Localize(country.Tier.ToLocalizationKey());
+                var cultures = string.Join("&br;", country.Cultures.Select(c => localizer.Localize(c)));
+                var religion = localizer.Localize(country.Religion);
+                var hierarchy = localizer.Localize(country.SocialHierarchy);
+                var capital = localizer.Localize(country.Capital);
+                var isInitial = initialTags.Contains(country.Tag) ? "初期" : "";
+                var isReleasable = releasableTags.Contains(country.Tag) ? "解放" : "";
+                var isFormable = formableTags.Contains(country.Tag) ? "形成" : "";
+
+                sb.AppendLine($"|BGCOLOR({country.Color.ToColorCode()}):|~{country.Tag}|{englishName}|{name}|{countryType}|{tier}|{cultures}|{religion}|{hierarchy}|{capital}|{isInitial}|{isReleasable}|{isFormable}|");
+            }
+            return sb.ToString();
+        }
+        private static string RemovePrefix(string key)
+        {
+            var index = key.IndexOf(':');
+            if (index >= 0)
+            {
+                return key[(index + 1)..];
+            }
+            return key;
+        }
+    }
+}
+```
+
+```Victoria3.Formatting\PukiwikiFormatters\FormableCountryPukiwikiFormatter.cs
+using System.Text;
+using Victoria3.GameData;
+using Victoria3.Localization;
+
+namespace Victoria3.Formatting.PukiwikiFormatters
+{
+    public class FormableCountryPukiwikiFormatter
+    {
+        public string Format(
+            IEnumerable<FormableCountry> items,
+            ILocalizer localizer)
+        {
+            var sb = new StringBuilder();
+
+            sb.AppendLine("|CENTER:|LEFT:||130|150||||c");
+            sb.AppendLine("|~ |~国名|タグ|主要文化|条件|必要州|国家ティア|備考|h");
+
+            foreach (var formableCountry in items)
+            {
+                var name = localizer.Localize(formableCountry.Tag);
+
+                sb.AppendLine($"||~{name}|{formableCountry.Tag}||||||");
+            }
+            return sb.ToString();
+        }
+    }
+}
+```
+
+```Victoria3.Formatting\PukiwikiFormatters\HistoricalStateRegionPukiwikiFormatter.cs
+using System.Text;
+using Victoria3.GameData;
+using Victoria3.Localization;
+
+namespace Victoria3.Formatting.PukiwikiFormatters
+{
+    public class HistoricalStateRegionPukiwikiFormatter
+    {
+        public string Format(
+            IEnumerable<HistoricalStateRegion> items,
+            ILocalizer localizer)
+        {
+            var sb = new StringBuilder();
+
+            sb.AppendLine("|~州地域名|所有者|母国|請求権|h");
+
+            foreach (var stateRegion in items)
+            {
+                var name = localizer.Localize(stateRegion.Tag);
+                var countries = string.Join(", ", stateRegion.CreateStates.Select(cs => localizer.Localize(cs.Country)));
+                var homelands = string.Join(", ", stateRegion.Homelands.Select(h => localizer.Localize(h)));
+                var claims = string.Join(", ", stateRegion.Claims.Select(c => localizer.Localize(c)));
+
+                sb.AppendLine($"|{name}|{countries}|{homelands}|{claims}|");
+            }
+            return sb.ToString();
+        }
+    }
+}
+```
+
+```Victoria3.Formatting\PukiwikiFormatters\ReleasableCountryPukiwikiFormatter.cs
+using System.Text;
+using Victoria3.GameData;
+using Victoria3.Localization;
+
+namespace Victoria3.Formatting.PukiwikiFormatters
+{
+    public class ReleasableCountryPukiwikiFormatter
+    {
+        public string Format(
+            IEnumerable<ReleasableCountry> items,
+            ILocalizer localizer)
+        {
+            var sb = new StringBuilder();
+
+            sb.AppendLine("|~ |~国名|タグ|h");
+
+            foreach (var country in items)
+            {
+                var name = localizer.Localize(country.Tag);
+
+                sb.AppendLine($"||~{name}|{country.Tag}|");
+            }
+            return sb.ToString();
+        }
+    }
+}
+```
+
 ```Victoria3.GameData\Country.cs
 namespace Victoria3.GameData
 {
@@ -2282,7 +3046,30 @@ namespace Victoria3.GameData
         object? ValidAsHomeCountryForSeparatists,
         GameColor? PrimaryUnitColor,
         GameColor? SecondaryUnitColor,
-        GameColor? TertiaryUnitColor);
+        GameColor? TertiaryUnitColor)
+        : IPropertySchemaProvider<Country>
+    {
+        private static readonly PropertySchema<Country>[] _propertySchemas =
+        [
+            new PropertySchema<Country>(typeof(string), "Tag", c => c.Tag),
+            new PropertySchema<Country>(typeof(GameColor), "Color", c => c.Color),
+            new PropertySchema<Country>(typeof(CountryType), "Type", c => c.Type, c => c.Type.ToLocalizationKey()),
+            new PropertySchema<Country>(typeof(CountryTier), "Tier", c => c.Tier, c => c.Tier.ToLocalizationKey()),
+            new PropertySchema<Country>(typeof(string), "Social Hierarchy", c => c.SocialHierarchy),
+            new PropertySchema<Country>(typeof(string), "Religion", c => c.Religion),
+            new PropertySchema<Country>(typeof(IReadOnlyList<string>), "Cultures", c => c.Cultures),
+            new PropertySchema<Country>(typeof(string), "Capital", c => c.Capital),
+            new PropertySchema<Country>(typeof(bool), "Is Named From Capital", c => c.IsNamedFromCapital),
+            new PropertySchema<Country>(typeof(object), "Valid As Home Country For Separatists", c => c.ValidAsHomeCountryForSeparatists),
+            new PropertySchema<Country>(typeof(GameColor?), "Primary Unit Color", c => c.PrimaryUnitColor),
+            new PropertySchema<Country>(typeof(GameColor?), "Secondary Unit Color", c => c.SecondaryUnitColor),
+            new PropertySchema<Country>(typeof(GameColor?), "Tertiary Unit Color", c => c.TertiaryUnitColor),
+        ];
+
+        /// <inheritdoc/>
+        public static PropertySchema<Country>[] PropertySchemas
+            => _propertySchemas;
+    }
 }
 ```
 
@@ -2301,6 +3088,45 @@ namespace Victoria3.GameData
         Principality,
         CityState,
     }
+
+    public static class CountryTierExtensions
+    {
+        /// <summary>
+        /// 国家のティアをローカライズキーに変換する拡張メソッド。
+        /// </summary>
+        /// <param name="tier">変換する国家のティア。</param>
+        /// <returns>国家のティアに対応するローカライズキー。</returns>
+        /// <exception cref="ArgumentOutOfRangeException">予期しない国家のティアが指定された場合にスローされる。</exception>
+        public static string ToLocalizationKey(this CountryTier tier)
+            => tier switch
+            {
+                CountryTier.Hegemony => "country_tier_hegemony",
+                CountryTier.Empire => "country_tier_empire",
+                CountryTier.Kingdom => "country_tier_kingdom",
+                CountryTier.GrandPrincipality => "country_tier_grand_principality",
+                CountryTier.Principality => "country_tier_principality",
+                CountryTier.CityState => "country_tier_city_state",
+                _ => throw new ArgumentOutOfRangeException(nameof(tier), tier, "Unexpected country tier")
+            };
+
+        /// <summary>
+        /// 国家のティアの表示名を取得する拡張メソッド。
+        /// </summary>
+        /// <param name="tier">取得する国家のティア。</param>
+        /// <returns>国家のティアに対応する表示名。</returns>
+        /// <exception cref="ArgumentOutOfRangeException">予期しない国家のティアが指定された場合にスローされる。</exception>
+        public static string ToDisplayName(this CountryTier tier)
+            => tier switch
+            {
+                CountryTier.Hegemony => "Hegemony",
+                CountryTier.Empire => "Empire",
+                CountryTier.Kingdom => "Kingdom",
+                CountryTier.GrandPrincipality => "Grand Principality",
+                CountryTier.Principality => "Principality",
+                CountryTier.CityState => "City State",
+                _ => throw new ArgumentOutOfRangeException(nameof(tier), tier, "Unexpected country tier")
+            };
+    }
 }
 ```
 
@@ -2317,6 +3143,123 @@ namespace Victoria3.GameData
         Unrecognized,
         Decentralized,
     }
+
+    public static class CountryTypeExtensions
+    {
+        /// <summary>
+        /// 国家の種別をローカライズキーに変換する拡張メソッド。
+        /// </summary>
+        /// <param name="type">変換する国家のタイプ。</param>
+        /// <returns>国家のタイプに対応するローカライズキー。</returns>
+        /// <exception cref="ArgumentOutOfRangeException">予期しない国家のタイプが指定された場合にスローされる。</exception>
+        public static string ToLocalizationKey(this CountryType type)
+            => type switch
+            {
+                CountryType.Recognized => "recognized",
+                CountryType.Colonial => "colonial",
+                CountryType.Unrecognized => "unrecognized",
+                CountryType.Decentralized => "decentralized",
+                _ => throw new ArgumentOutOfRangeException(nameof(type), type, "Unexpected country type")
+            };
+
+        /// <summary>
+        /// 国家の種別の表示名を取得する拡張メソッド。
+        /// </summary>
+        /// <param name="type">取得する国家のタイプ。</param>
+        /// <returns>国家のタイプに対応する表示名。</returns>
+        /// <exception cref="ArgumentOutOfRangeException">予期しない国家のタイプが指定された場合にスローされる。</exception>
+        public static string ToDisplayName(this CountryType type)
+            => type switch
+            {
+                CountryType.Recognized => "Recognized",
+                CountryType.Colonial => "Colonial",
+                CountryType.Unrecognized => "Unrecognized",
+                CountryType.Decentralized => "Decentralized",
+                _ => throw new ArgumentOutOfRangeException(nameof(type), type, "Unexpected country type")
+            };
+    }
+}
+```
+
+```Victoria3.GameData\CreateState.cs
+namespace Victoria3.GameData
+{
+    /// <summary>
+    /// 
+    /// </summary>
+    /// <param name="Country"></param>
+    /// <param name="StateType"></param>
+    /// <param name="Provinces"></param>
+    public sealed record CreateState(
+        string Country,
+        string? StateType,
+        IReadOnlyList<string> Provinces)
+    {
+        public override string ToString()
+            => $"{Country}({Provinces.Count})";
+    }
+}
+```
+
+```Victoria3.GameData\FormableCountry.cs
+namespace Victoria3.GameData
+{
+    /// <summary>
+    /// 形成可能国家を表すレコード。形成可能国家は、特定の条件を満たすことでゲーム内で形成されることができる国家を表す。
+    /// </summary>
+    /// <param name="Tag">国家のタグ。</param>
+    /// <param name="States">必要な州のリスト。</param>
+    /// <param name="UseCultureStates">必要な州として文化に基づく州を使用するかどうか。</param>
+    /// <param name="RequiredStatesFraction">必要な州の割合。</param>
+    /// <param name="AIWillDo">AIが実行するかどうか。</param>
+    /// <param name="Potential">形成の潜在条件。</param>
+    /// <param name="Possible">形成の発動条件。</param>
+    /// <param name="GeographicRegion">地理的な地域。</param>
+    /// <param name="IsMajorFormation">大国統一かどうか。</param>
+    /// <param name="UnificationPlay">統一外交戦の情報。</param>
+    /// <param name="LeadershipPlay">リーダーシップ外交戦の情報。</param>
+    /// <param name="MaxNumFormationCandidates">統一候補の最大数。</param>
+    /// <param name="CanBeFormationCandidate">統一候補になれるかどうか。</param>
+    /// <param name="CanBeUnificationTarget">統一の対象になれるかどうか。</param>
+    public sealed record FormableCountry(
+        string Tag,
+        IReadOnlyList<string> States,
+        bool UseCultureStates,
+        decimal RequiredStatesFraction,
+        object? AIWillDo,
+        object? Potential,
+        object? Possible,
+        string? GeographicRegion,
+        bool IsMajorFormation,
+        string? UnificationPlay,
+        string? LeadershipPlay,
+        int? MaxNumFormationCandidates,
+        object? CanBeFormationCandidate,
+        object? CanBeUnificationTarget)
+        : IPropertySchemaProvider<FormableCountry>
+    {
+        private static readonly PropertySchema<FormableCountry>[] _propertySchemas =
+        [
+            new PropertySchema<FormableCountry>(typeof(string), "Tag", c => c.Tag),
+            new PropertySchema<FormableCountry>(typeof(IReadOnlyList<string>), "States", c => c.States),
+            new PropertySchema<FormableCountry>(typeof(bool), "Use Culture States", c => c.UseCultureStates),
+            new PropertySchema<FormableCountry>(typeof(decimal), "Required States Fraction", c => c.RequiredStatesFraction),
+            new PropertySchema<FormableCountry>(typeof(object), "AI Will Do", c => c.AIWillDo),
+            new PropertySchema<FormableCountry>(typeof(object), "Potential", c => c.Potential),
+            new PropertySchema<FormableCountry>(typeof(object), "Possible", c => c.Possible),
+            new PropertySchema<FormableCountry>(typeof(string), "Geographic Region", c => c.GeographicRegion),
+            new PropertySchema<FormableCountry>(typeof(bool), "Is Major Formation", c => c.IsMajorFormation),
+            new PropertySchema<FormableCountry>(typeof(string), "Unification Play", c => c.UnificationPlay),
+            new PropertySchema<FormableCountry>(typeof(string), "Leadership Play", c => c.LeadershipPlay),
+            new PropertySchema<FormableCountry>(typeof(decimal), "Max Num Formation Candidates", c => c.MaxNumFormationCandidates),
+            new PropertySchema<FormableCountry>(typeof(object), "Can Be Formation Candidate", c => c.CanBeFormationCandidate),
+            new PropertySchema<FormableCountry>(typeof(object), "Can Be Unification Target", c => c.CanBeUnificationTarget),
+        ];
+
+        /// <inheritdoc/>
+        public static PropertySchema<FormableCountry>[] PropertySchemas
+            => _propertySchemas;
+    }
 }
 ```
 
@@ -2332,7 +3275,128 @@ namespace Victoria3.GameData
     public readonly record struct GameColor(
         byte R,
         byte G,
-        byte B);
+        byte B)
+    {
+        /// <summary>
+        /// カラーコードに変換する。形式は "#RRGGBB" となる。
+        /// </summary>
+        /// <returns>カラーコード文字列</returns>
+        public string ToColorCode()
+            => $"#{R:X2}{G:X2}{B:X2}";
+
+        public override string ToString()
+            => ToColorCode();
+    }
+}
+```
+
+```Victoria3.GameData\HistoricalStateRegion.cs
+namespace Victoria3.GameData
+{
+    /// <summary>
+    /// 歴史的州地域を表すレコード。歴史的州地域は、ゲーム開始時点でどの国がどの州を所有しているかを表す。
+    /// </summary>
+    /// <param name="Tag">州地域のタグ</param>
+    /// <param name="CreateStates">州地域に含まれる州のリスト</param>
+    /// <param name="Homelands">この州地域を母国とする文化のリスト</param>
+    /// <param name="Claims">この州地域に請求権を持つ国のリスト</param>
+    public sealed record HistoricalStateRegion(
+        string Tag,
+        IReadOnlyList<CreateState> CreateStates,
+        IReadOnlyList<string> Homelands,
+        IReadOnlyList<string> Claims)
+        : IPropertySchemaProvider<HistoricalStateRegion>
+    {
+        private static readonly PropertySchema<HistoricalStateRegion>[] _propertySchemas =
+        [
+            new PropertySchema<HistoricalStateRegion>(typeof(string), "Tag", c => c.Tag),
+            new PropertySchema<HistoricalStateRegion>(typeof(IReadOnlyList<CreateState>), "Create States", c => c.CreateStates),
+            new PropertySchema<HistoricalStateRegion>(typeof(IReadOnlyList<string>), "Homelands", c => c.Homelands),
+            new PropertySchema<HistoricalStateRegion>(typeof(IReadOnlyList<string>), "Claims", c => c.Claims),
+        ];
+
+        /// <inheritdoc/>
+        public static PropertySchema<HistoricalStateRegion>[] PropertySchemas
+            => _propertySchemas;
+    }
+}
+```
+
+```Victoria3.GameData\IPropertySchemaProvider.cs
+namespace Victoria3.GameData
+{
+    /// <summary>
+    /// プロパティスキーマを提供するためのインターフェース。
+    /// プロパティスキーマは、クラスのプロパティの型や名前、値へのアクセス方法を定義するもので、データの構造を動的に扱う際に使用される。
+    /// </summary>
+    /// <typeparam name="T">プロパティスキーマを提供するクラスの型</typeparam>
+    public interface IPropertySchemaProvider<T>
+    {
+        /// <summary>
+        /// クラスのプロパティスキーマの配列を取得する。
+        /// </summary>
+        public static abstract PropertySchema<T>[] PropertySchemas { get; }
+    }
+}
+```
+
+```Victoria3.GameData\PropertySchema.cs
+namespace Victoria3.GameData
+{
+    /// <summary>
+    /// ゲームデータのプロパティのスキーマを表す構造体。
+    /// </summary>
+    /// <typeparam name="T">ゲームデータの型。</typeparam>
+    /// <param name="Type">プロパティの型情報。</param>
+    /// <param name="DisplayName">プロパティの表示名。</param>
+    /// <param name="Getter">プロパティの値を取得する関数。</param>
+    /// <param name="LocalizationKeyGetter">プロパティのローカライズキーを取得する関数。省略可能。</param>
+    public readonly record struct PropertySchema<T>(
+        Type Type,
+        string DisplayName,
+        Func<T, object?> Getter,
+        Func<T, string>? LocalizationKeyGetter = null);
+}
+```
+
+```Victoria3.GameData\ReleasableCountry.cs
+namespace Victoria3.GameData
+{
+    /// <summary>
+    /// 解放可能国家を表すレコード。解放可能国家は、特定の条件を満たすことでゲーム内で解放されることができる国家を表す。
+    /// </summary>
+    /// <param name="Tag">国家のタグ。</param>
+    /// <param name="States">必要な州のリスト。</param>
+    /// <param name="Provinces">必要なプロヴィンスのリスト。</param>
+    /// <param name="UseCultureStates">必要な州として文化に基づく州を使用するかどうか。</param>
+    /// <param name="RequiredNumStates">必要な州の数。</param>
+    /// <param name="AIWillDo">AIが実行するかどうか。</param>
+    /// <param name="Possible">解放の発動条件。</param>
+    public sealed record ReleasableCountry(
+        string Tag,
+        IReadOnlyList<string> States,
+        IReadOnlyList<string> Provinces,
+        bool UseCultureStates,
+        int? RequiredNumStates,
+        object? AIWillDo,
+        object? Possible)
+        : IPropertySchemaProvider<ReleasableCountry>
+    {
+        private static readonly PropertySchema<ReleasableCountry>[] _propertySchemas =
+        [
+            new PropertySchema<ReleasableCountry>(typeof(string), "Tag", c => c.Tag),
+            new PropertySchema<ReleasableCountry>(typeof(IReadOnlyList<string>), "States", c => c.States),
+            new PropertySchema<ReleasableCountry>(typeof(IReadOnlyList<string>), "Provinces", c => c.Provinces),
+            new PropertySchema<ReleasableCountry>(typeof(bool), "Use Culture States", c => c.UseCultureStates),
+            new PropertySchema<ReleasableCountry>(typeof(int), "Required States Num", c => c.RequiredNumStates),
+            new PropertySchema<ReleasableCountry>(typeof(object), "AI Will Do", c => c.AIWillDo),
+            new PropertySchema<ReleasableCountry>(typeof(object), "Possible", c => c.Possible),
+        ];
+
+        /// <inheritdoc/>
+        public static PropertySchema<ReleasableCountry>[] PropertySchemas
+            => _propertySchemas;
+    }
 }
 ```
 
@@ -2440,12 +3504,49 @@ namespace Victoria3.Loading
     /// </summary>
     public static class Victoria3Paths
     {
-        public const string CountryDefinitions = "common/country_definitions";
+        public static string CountryDefinitions => @"common\country_definitions";
+        public static string CountryFormation => @"common\country_formation";
+        public static string CountryCreation => @"common\country_creation";
+        public static string HistoricalStates => @"common\history\states";
     }
 }
 ```
 
 ```Victoria3.Loading\Loaders\CountryLoader.cs
+using PdxScriptAnalysis;
+using PdxScriptAnalysis.Diagnostics;
+using Victoria3.GameData;
+
+namespace Victoria3.Loading.Loaders
+{
+    /// <summary>
+    /// 国家データを <see cref="ScriptTree"/> から読み込むローダー。
+    /// </summary>
+    /// <param name="trees">読み込むスクリプトツリーのコレクション。</param>
+    public sealed class CountryLoader(IEnumerable<ScriptTree> trees) : ILoader<Country>
+    {
+        private readonly IEnumerable<ScriptTree> _trees = trees;
+
+        ///  <inheritdoc/>
+        public LoadOutput<Country> Load()
+        {
+            var countries = new List<Country>();
+            var diagnostics = new List<Diagnostic>();
+
+            foreach (var tree in _trees)
+            {
+                var output = new CountryTreeLoader(tree).Load();
+                countries.AddRange(output.Values);
+                diagnostics.AddRange(output.Diagnostics);
+            }
+
+            return new(countries, diagnostics);
+        }
+    }
+}
+```
+
+```Victoria3.Loading\Loaders\CountryTreeLoader.cs
 using PdxScriptAnalysis;
 using PdxScriptAnalysis.Diagnostics;
 using PdxScriptAnalysis.Syntax;
@@ -2456,37 +3557,28 @@ using Victoria3.GameData;
 namespace Victoria3.Loading.Loaders
 {
     /// <summary>
-    /// 国家データを <see cref="ScriptTree"/> から読み込むローダー。
+    /// 1つの<see cref="ScriptTree"/>から国家データを読み込むための内部クラス。
     /// </summary>
-    /// <param name="trees">読み込むスクリプトツリーのコレクション。</param>
-    public sealed class CountryLoader(IEnumerable<ScriptTree> trees)
+    /// <param name="tree">読み込むスクリプトツリー。</param>
+    internal sealed class CountryTreeLoader(ScriptTree tree)
     {
-        private readonly IEnumerable<ScriptTree> _trees = trees;
+        private readonly ScriptTree _tree = tree;
         private readonly List<Diagnostic> _diagnostics = [];
 
+        private string? FilePath => _tree.Source.FilePath;
+
+
         /// <summary>
-        /// 国家データをスクリプトツリーから読み込むメソッド。各ツリーを処理し、国家データのリストと診断情報を含む <see cref="LoadOutput{Country}"/> を返す。
+        /// スクリプトツリーから国家データを読み込み、診断情報とともに返す。
+        /// 診断情報には、ファイルパス情報を含める。
         /// </summary>
-        /// <returns>読み込まれた国家データと診断情報を含む <see cref="LoadOutput{Country}"/> オブジェクト</returns>
-        public LoadOutput<Country> Load()
+        /// <returns>ロード結果</returns>
+        internal LoadOutput<Country> Load()
         {
             _diagnostics.Clear();
             var countries = new List<Country>();
 
-            foreach (var tree in _trees)
-            {
-                var countriesFromTree = LoadFromTree(tree);
-                countries.AddRange(countriesFromTree);
-            }
-
-            return new LoadOutput<Country>(countries, _diagnostics);
-        }
-
-        private List<Country> LoadFromTree(ScriptTree tree)
-        {
-            var countries = new List<Country>();
-
-            foreach (var topLevelNode in tree.Root.Children)
+            foreach (var topLevelNode in _tree.Root.Children)
             {
                 if (topLevelNode is not BlockPropertyNode blockNode)
                 {
@@ -2500,9 +3592,10 @@ namespace Victoria3.Loading.Loaders
                 }
             }
 
-            return countries;
+            return new(countries, _diagnostics);
         }
 
+        // ブロックプロパティノードから国家データを読み込む。必須プロパティが不足している場合はエラー診断を追加し、false を返す。
         private bool TryLoadCountry(BlockPropertyNode node, [NotNullWhen(true)] out Country country)
         {
             var countryBuilder = new CountryBuilder();
@@ -2521,111 +3614,63 @@ namespace Victoria3.Loading.Loaders
                 switch (propertyNode.Key.Text)
                 {
                     case "color":
-                        if (TryParseToGameColor(propertyNode, "color", out var color))
-                        {
-                            countryBuilder.Color = color;
-                        }
+                        if (TryParseToGameColor(propertyNode, out var color)) countryBuilder.Color = color;
                         break;
                     case "country_type":
-                        if (TryParseToString(propertyNode, "country_type", out var typeValue))
-                        {
-                            var originalTypeValue = typeValue;
-                            typeValue = typeValue.Replace("_", "", StringComparison.OrdinalIgnoreCase);
-                            if (Enum.TryParse<CountryType>(typeValue, ignoreCase: true, out var type))
-                            {
-                                countryBuilder.Type = type;
-                            }
-                            else
-                            {
-                                AddError($"Invalid value \"{originalTypeValue}\" for property \"type\". Expected one of the following values: {string.Join(", ", Enum.GetNames<CountryType>())}.", propertyNode.Span, propertyNode.LinePosition);
-                            }
-                        }
+                        if (TryParseToEnum<CountryType>(propertyNode, out var type)) countryBuilder.Type = type;
                         break;
                     case "tier":
-                        if (TryParseToString(propertyNode, "tier", out var tierValue))
-                        {
-                            var originalTierValue = tierValue;
-                            tierValue = tierValue.Replace("_", "", StringComparison.OrdinalIgnoreCase);
-                            if (Enum.TryParse<CountryTier>(tierValue, ignoreCase: true, out var tier))
-                            {
-                                countryBuilder.Tier = tier;
-                            }
-                            else
-                            {
-                                AddError($"Invalid value \"{originalTierValue}\" for property \"tier\". Expected one of the following values: {string.Join(", ", Enum.GetNames<CountryTier>())}.", propertyNode.Span, propertyNode.LinePosition);
-                            }
-                        }
+                        if (TryParseToEnum<CountryTier>(propertyNode, out var tier)) countryBuilder.Tier = tier;
                         break;
                     case "social_hierarchy":
-                        if (TryParseToString(propertyNode, "social_hierarchy", out var socialHierarchy))
-                        {
-                            countryBuilder.SocialHierarchy = socialHierarchy;
-                        }
+                        if (TryParseToString(propertyNode, out var socialHierarchy)) countryBuilder.SocialHierarchy = socialHierarchy;
                         break;
                     case "religion":
-                        if (TryParseToString(propertyNode, "religion", out var religion))
-                        {
-                            countryBuilder.Religion = religion;
-                        }
+                        if (TryParseToString(propertyNode, out var religion)) countryBuilder.Religion = religion;
                         break;
                     case "cultures":
-                        if (TryParseToStringList(propertyNode, "cultures", out var cultures))
-                        {
-                            countryBuilder.Cultures = cultures;
-                        }
+                        if (TryParseToStringList(propertyNode, out var cultures)) countryBuilder.Cultures = cultures;
                         break;
                     case "capital":
-                        if (TryParseToString(propertyNode, "capital", out var capital))
-                        {
-                            countryBuilder.Capital = capital;
-                        }
+                        if (TryParseToString(propertyNode, out var capital)) countryBuilder.Capital = capital;
                         break;
                     case "is_named_from_capital":
-                        if (TryParseToBool(propertyNode, "is_named_from_capital", out var isNamedFromCapital))
-                        {
-                            countryBuilder.IsNamedFromCapital = isNamedFromCapital;
-                        }
+                        if (TryParseToBool(propertyNode, out var isNamedFromCapital)) countryBuilder.IsNamedFromCapital = isNamedFromCapital;
                         break;
                     case "valid_as_home_country_for_separatists":
                         // 一旦ノードをそのまま
                         countryBuilder.ValidAsHomeCountryForSeparatists = propertyNode;
                         break;
                     case "primary_unit_color":
-                        if (TryParseToGameColor(propertyNode, "primary_unit_color", out var primaryUnitColor))
-                        {
-                            countryBuilder.PrimaryUnitColor = primaryUnitColor;
-                        }
+                        if (TryParseToGameColor(propertyNode, out var primaryUnitColor)) countryBuilder.PrimaryUnitColor = primaryUnitColor;
                         break;
                     case "secondary_unit_color":
-                        if (TryParseToGameColor(propertyNode, "secondary_unit_color", out var secondaryUnitColor))
-                        {
-                            countryBuilder.SecondaryUnitColor = secondaryUnitColor;
-                        }
+                        if (TryParseToGameColor(propertyNode, out var secondaryUnitColor)) countryBuilder.SecondaryUnitColor = secondaryUnitColor;
                         break;
                     case "tertiary_unit_color":
-                        if (TryParseToGameColor(propertyNode, "tertiary_unit_color", out var tertiaryUnitColor))
-                        {
-                            countryBuilder.TertiaryUnitColor = tertiaryUnitColor;
-                        }
+                        if (TryParseToGameColor(propertyNode, out var tertiaryUnitColor)) countryBuilder.TertiaryUnitColor = tertiaryUnitColor;
                         break;
                     case "dynamic_country_definition":
                         // dynamic_country_definition = yes のプロパティを持つ場合その国家は読み取らない
-                        if (TryParseToBool(propertyNode, "dynamic_country_definition", out var isDynamicCountryDefinition) && isDynamicCountryDefinition == true)
+                        if (TryParseToBool(propertyNode, out var isDynamicCountryDefinition) && isDynamicCountryDefinition == true)
                         {
                             country = default!;
                             return false;
                         }
                         break;
                     default:
+                        // 予期しないプロパティがあった場合は警告を追加する。
+                        // バージョンアップなどで新しいプロパティが追加された場合に、古いバージョンのツールでも読み込みを続行できるようにするため。
                         AddWarning($"Unexpected property \"{propertyNode.Key.Text}\" in country definition. This property will be ignored.", propertyNode.Key.Span, propertyNode.LinePosition);
                         break;
                 }
             }
 
+            // 必須プロパティが不足している場合はエラー診断を追加し、false を返す。
             var missings = countryBuilder.GetMissingRequiredProperties();
             if (missings.Count > 0)
             {
-                AddError($"Missing required properties for country with tag \"{tag}\": {string.Join(", ", missings)}.", node.Span, node.LinePosition);
+                AddError($"Missing required properties ({string.Join(", ", missings)}) for country with tag \"{tag}\": {string.Join(", ", missings)}.", node.Span, node.LinePosition);
                 country = default!;
                 return false;
             }
@@ -2634,166 +3679,86 @@ namespace Victoria3.Loading.Loaders
             return true;
         }
 
-
-        // スカラープロパティノードの右辺を文字列として解析するためのヘルパーメソッド
-        private bool TryParseToString(PropertyNode node, string propertyName, [NotNullWhen(true)] out string value)
+        // PropertyNode から値をパースするためのヘルパーメソッド群
+        // PropertyNodeParsers クラスの TryParse メソッドを呼び出し、失敗した場合は診断情報にファイルパスを追加する。
+        private bool TryParseToString(PropertyNode node, [NotNullWhen(true)] out string value)
         {
-            if (node is not ScalarPropertyNode scalarPropertyNode)
+            if (PropertyNodeParsers.TryParseToString(node, out value, out var diagnostic))
             {
-                AddError($"Expected a scalar property node for property \"{propertyName}\", but found a different type of node.", node.Span, node.LinePosition);
-                value = null!;
-                return false;
-            }
-
-            value = scalarPropertyNode.Value.Token.Text;
-            return true;
-        }
-
-        // ブロックプロパティノードの右辺を文字列のリストとして解析するためのヘルパーメソッド
-        private bool TryParseToStringList(PropertyNode node, string propertyName, [NotNullWhen(true)] out List<string> values)
-        {
-            if (node is not BlockPropertyNode blockPropertyNode)
-            {
-                AddError($"Expected a block property node for property \"{propertyName}\", but found a different type of node.", node.Span, node.LinePosition);
-                values = null!;
-                return false;
-            }
-
-            if (blockPropertyNode.Value.Children.Any(c => c is not ScalarNode))
-            {
-                AddError($"Expected all children of the block for property \"{propertyName}\" to be scalar nodes representing string values, but found child nodes of different types.", blockPropertyNode.Span, blockPropertyNode.LinePosition);
-                values = null!;
-                return false;
-            }
-
-            values = blockPropertyNode.Value.Children
-                .OfType<ScalarNode>()
-                .Select(n => n.Token.Text)
-                .ToList();
-            return true;
-        }
-
-        // スカラープロパティノードの右辺を真偽値として解析するためのヘルパーメソッド
-        private bool TryParseToBool(PropertyNode node, string propertyName, out bool value)
-        {
-            if (node is not ScalarPropertyNode scalarPropertyNode)
-            {
-                AddError($"Expected a scalar property node for property \"{propertyName}\", but found a different type of node.", node.Span, node.LinePosition);
-                value = default;
-                return false;
-            }
-
-            switch (scalarPropertyNode.Value.Token.Text)
-            {
-                case "yes":
-                    value = true;
-                    return true;
-                case "no":
-                    value = false;
-                    return true;
-                default:
-                    AddError($"Expected the value of property \"{propertyName}\" to be \"yes\" or \"no\", but found \"{scalarPropertyNode.Value.Token.Text}\".", scalarPropertyNode.Value.Span, scalarPropertyNode.Value.LinePosition);
-                    value = default;
-                    return false;
-            }
-        }
-
-        // ブロックプロパティノードまたは型付きブロックプロパティノードの右辺を GameColor として解析するためのヘルパーメソッド
-        private bool TryParseToGameColor(PropertyNode node, string propertyName, out GameColor color)
-        {
-            if (node is BlockPropertyNode block)
-            {
-                if (TryParseFromBlockToGameColor(block.Value, propertyName, out var colorValues))
-                {
-                    color = ColorConverter.FromRgb(colorValues[0], colorValues[1], colorValues[2]);
-                    return true;
-                }
-                else
-                {
-                    color = default;
-                    return false;
-                }
-            }
-            else if (node is TypedBlockPropertyNode typedBlock)
-            {
-                if (!TryParseFromBlockToGameColor(typedBlock.Value, propertyName, out var typedColorValues))
-                {
-                    color = default;
-                    return false;
-                }
-
-
-                var typeQualifier = typedBlock.TypeQualifier.Text;
-                if (typeQualifier.Equals("hsv", StringComparison.OrdinalIgnoreCase))
-                {
-                    color = ColorConverter.FromHsv(typedColorValues[0], typedColorValues[1], typedColorValues[2]);
-                    return true;
-                }
-                else if (typeQualifier.Equals("hsv360", StringComparison.OrdinalIgnoreCase))
-                {
-                    color = ColorConverter.FromHsv360(typedColorValues[0], typedColorValues[1], typedColorValues[2]);
-                    return true;
-                }
-                else if (typeQualifier.Equals("rgb", StringComparison.OrdinalIgnoreCase))
-                {
-                    color = ColorConverter.FromRgb(typedColorValues[0], typedColorValues[1], typedColorValues[2]);
-                    return true;
-                }
-                else
-                {
-                    AddError($"Unsupported color type qualifier \"{typeQualifier}\" for property \"{propertyName}\". Expected \"rgb\", \"hsv\", or \"hsv360\".", typedBlock.TypeQualifier.Span, typedBlock.TypeQualifier.LinePosition);
-                    color = default;
-                    return false;
-                }
+                return true;
             }
             else
             {
-                AddError($"Expected a block or typed block property node for property \"{propertyName}\", but found a different type of node.", node.Span, node.LinePosition);
+                _diagnostics.Add(diagnostic with { FilePath = FilePath });
+                value = null!;
+                return false;
+            }
+        }
+
+        private bool TryParseToStringList(PropertyNode node, [NotNullWhen(true)] out List<string> values)
+        {
+            if (PropertyNodeParsers.TryParseToStringList(node, out values, out var diagnostic))
+            {
+                return true;
+            }
+            else
+            {
+                _diagnostics.Add(diagnostic with { FilePath = FilePath });
+                values = null!;
+                return false;
+            }
+        }
+
+        private bool TryParseToBool(PropertyNode node, out bool value)
+        {
+            if (PropertyNodeParsers.TryParseToBool(node, out value, out var diagnostic))
+            {
+                return true;
+            }
+            else
+            {
+                _diagnostics.Add(diagnostic with { FilePath = FilePath });
+                value = false;
+                return false;
+            }
+        }
+
+        private bool TryParseToEnum<TEnum>(PropertyNode node, out TEnum value)
+            where TEnum : struct, Enum
+        {
+            if (PropertyNodeParsers.TryParseToEnum(node, out value, out var diagnostic))
+            {
+                return true;
+            }
+            else
+            {
+                _diagnostics.Add(diagnostic with { FilePath = FilePath });
+                value = default;
+                return false;
+            }
+        }
+
+        private bool TryParseToGameColor(PropertyNode node, out GameColor color)
+        {
+            if (PropertyNodeParsers.TryParseToGameColor(node, out color, out var diagnostic))
+            {
+                return true;
+            }
+            else
+            {
+                _diagnostics.Add(diagnostic with { FilePath = FilePath });
                 color = default;
                 return false;
             }
         }
 
-        // ブロックノードの子ノードを色の値として解析するためのヘルパーメソッド
-        private bool TryParseFromBlockToGameColor(BlockNode block, string propertyName, out decimal[] colorValues)
-        {
-            if (block.Children.Count != 3)
-            {
-                AddError($"Expected a block with exactly 3 children for property \"{propertyName}\" to represent RGB values, but found a block with {block.Children.Count} children.", block.Span, block.LinePosition);
-                colorValues = [];
-                return false;
-            }
-
-            if (block.Children.Any(c => c is not ScalarNode))
-            {
-                AddError($"Expected all children of the block for property \"{propertyName}\" to be scalar nodes representing RGB components, but found a child node of a different type.", block.Span, block.LinePosition);
-                colorValues = [];
-                return false;
-            }
-
-            var rgbValueNodes = block.Children.OfType<ScalarNode>().ToList();
-
-            colorValues = new decimal[3];
-            for (int i = 0; i < 3; i++)
-            {
-                if (!decimal.TryParse(rgbValueNodes[i].Token.Text, out colorValues[i]))
-                {
-                    AddError($"Expected the value of child node {i + 1} of the block for property \"{propertyName}\" to be a valid byte (0-255) representing an RGB component, but found \"{rgbValueNodes[i].Token.Text}\".", rgbValueNodes[i].Span, rgbValueNodes[i].LinePosition);
-                    colorValues = [];
-                    return false;
-                }
-            }
-            return true;
-        }
-
         // エラー診断を追加するためのヘルパーメソッド
         private void AddError(string message, TextSpan span, LinePosition linePosition)
-            => _diagnostics.Add(new Diagnostic(DiagnosticSeverity.Error, message, span, linePosition));
-
+            => _diagnostics.Add(new Diagnostic(DiagnosticSeverity.Error, message, span, linePosition, FilePath));
         private void AddWarning(string message, TextSpan span, LinePosition linePosition)
-            => _diagnostics.Add(new Diagnostic(DiagnosticSeverity.Warning, message, span, linePosition));
+            => _diagnostics.Add(new Diagnostic(DiagnosticSeverity.Warning, message, span, linePosition, FilePath));
 
-        // 国のビルダークラス。必須プロパティを null 許容型で保持し、ビルド時に不足しているプロパティをチェックする。
+        // ビルダー。必須プロパティを null 許容型で保持し、ビルド時に不足しているプロパティをチェックする。
         private class CountryBuilder
         {
             internal string? Tag { get; set; }
@@ -2842,271 +3807,1307 @@ namespace Victoria3.Loading.Loaders
 }
 ```
 
-```Victoria3.Loading.Tests\Loaders\CountryLoaderErrorTests.cs
+```Victoria3.Loading\Loaders\FormableCountryLoader.cs
+using PdxScriptAnalysis;
+using PdxScriptAnalysis.Diagnostics;
+using PdxScriptAnalysis.Syntax;
+using PdxScriptAnalysis.Text;
+using System.Diagnostics.CodeAnalysis;
+using Victoria3.GameData;
+
+namespace Victoria3.Loading.Loaders
+{
+    /// <summary>
+    /// 形成可能国家のロード処理を担当するクラス。
+    /// </summary>
+    /// <param name="trees">読み込むスクリプトツリーのコレクション。</param>
+    public sealed class FormableCountryLoader(IEnumerable<ScriptTree> trees) : ILoader<FormableCountry>
+    {
+        private readonly IEnumerable<ScriptTree> _trees = trees;
+        private readonly List<Diagnostic> _diagnostics = [];
+
+        /// <inheritdoc/>
+        public LoadOutput<FormableCountry> Load()
+        {
+            _diagnostics.Clear();
+            var formables = new List<FormableCountry>();
+
+            foreach (var tree in _trees)
+            {
+                var formablesFromTree = LoadFromTree(tree);
+                formables.AddRange(formablesFromTree);
+            }
+
+            return new LoadOutput<FormableCountry>(formables, _diagnostics);
+        }
+
+        private List<FormableCountry> LoadFromTree(ScriptTree tree)
+        {
+            var formables = new List<FormableCountry>();
+
+            foreach (var topLevelNode in tree.Root.Children)
+            {
+                if (topLevelNode is not BlockPropertyNode blockNode)
+                {
+                    AddError($"Unexpected top-level node of type {topLevelNode.GetType().Name}. Expected a BlockPropertyNode representing a formable country definition.", topLevelNode.Span, topLevelNode.LinePosition);
+                    continue;
+                }
+
+                if (TryLoadFormableCountry(blockNode, out var formableCountry))
+                {
+                    formables.Add(formableCountry);
+                }
+            }
+
+            return formables;
+        }
+
+        private bool TryLoadFormableCountry(BlockPropertyNode node, [NotNullWhen(true)] out FormableCountry formableCountry)
+        {
+            var formableCountryBuilder = new FormableCountryBuilder();
+
+            var tag = node.Key.Text;
+            formableCountryBuilder.Tag = tag;
+
+            foreach (var child in node.Value.Children)
+            {
+                if (child is not PropertyNode propertyNode)
+                {
+                    AddError($"Unexpected child node of type {child.GetType().Name}. Expected a PropertyNode.", child.Span, child.LinePosition);
+                    continue;
+                }
+
+                switch (propertyNode.Key.Text)
+                {
+                    case "states":
+                    case "STATES":
+                        if (TryParseToStringList(propertyNode, out var states)) formableCountryBuilder.States = states;
+                        break;
+                    case "use_culture_states":
+                        if (TryParseToBool(propertyNode, out var useCultureStates)) formableCountryBuilder.UseCultureStates = useCultureStates;
+                        break;
+                    case "required_states_fraction":
+                        if (TryParseToDecimal(propertyNode, out var requiredStatesFraction)) formableCountryBuilder.RequiredStatesFraction = requiredStatesFraction;
+                        break;
+                    case "ai_will_do":
+                        formableCountryBuilder.AIWillDo = propertyNode;
+                        break;
+                    case "potential":
+                        formableCountryBuilder.Potential = propertyNode;
+                        break;
+                    case "possible":
+                        formableCountryBuilder.Possible = propertyNode;
+                        break;
+                    case "geographic_region":
+                        if (TryParseToString(propertyNode, out var geographicRegion)) formableCountryBuilder.GeographicRegion = geographicRegion;
+                        break;
+                    case "is_major_formation":
+                        if (TryParseToBool(propertyNode, out var isMajorFormation)) formableCountryBuilder.IsMajorFormation = isMajorFormation;
+                        break;
+                    case "unification_play":
+                        if (TryParseToString(propertyNode, out var unificationPlay)) formableCountryBuilder.UnificationPlay = unificationPlay;
+                        break;
+                    case "leadership_play":
+                        if (TryParseToString(propertyNode, out var leadershipPlay)) formableCountryBuilder.LeadershipPlay = leadershipPlay;
+                        break;
+                    case "max_num_formation_candidates":
+                        if (TryParseToInt(propertyNode, out var maxNumFormationCandidates)) formableCountryBuilder.MaxNumFormationCandidates = maxNumFormationCandidates;
+                        break;
+                    case "can_be_formation_candidate":
+                        formableCountryBuilder.CanBeFormationCandidate = propertyNode;
+                        break;
+                    case "can_be_unification_target":
+                        formableCountryBuilder.CanBeUnificationTarget = propertyNode;
+                        break;
+                    default:
+                        AddWarning($"Unexpected property \"{propertyNode.Key.Text}\" in country definition. This property will be ignored.", propertyNode.Key.Span, propertyNode.LinePosition);
+                        break;
+                }
+            }
+
+            var missings = formableCountryBuilder.GetMissingRequiredProperties();
+            if (missings.Count > 0)
+            {
+                AddError($"Missing required properties for formable country with tag \"{tag}\": {string.Join(", ", missings)}.", node.Span, node.LinePosition);
+                formableCountry = default!;
+                return false;
+            }
+
+            formableCountry = formableCountryBuilder.Build();
+            return true;
+        }
+
+
+        private bool TryParseToString(PropertyNode node, [NotNullWhen(true)] out string value)
+        {
+            if (PropertyNodeParsers.TryParseToString(node, out value, out var diagnostic))
+            {
+                return true;
+            }
+            else
+            {
+                _diagnostics.Add(diagnostic);
+                value = null!;
+                return false;
+            }
+        }
+
+        private bool TryParseToStringList(PropertyNode node, [NotNullWhen(true)] out List<string> values)
+        {
+            if (PropertyNodeParsers.TryParseToStringList(node, out values, out var diagnostic))
+            {
+                return true;
+            }
+            else
+            {
+                _diagnostics.Add(diagnostic);
+                values = null!;
+                return false;
+            }
+        }
+
+        private bool TryParseToBool(PropertyNode node, out bool value)
+        {
+            if (PropertyNodeParsers.TryParseToBool(node, out value, out var diagnostic))
+            {
+                return true;
+            }
+            else
+            {
+                _diagnostics.Add(diagnostic);
+                value = false;
+                return false;
+            }
+        }
+
+        private bool TryParseToDecimal(PropertyNode node, out decimal value)
+        {
+            if (PropertyNodeParsers.TryParseToDecimal(node, out value, out var diagnostic))
+            {
+                return true;
+            }
+            else
+            {
+                _diagnostics.Add(diagnostic);
+                value = 0;
+                return false;
+            }
+        }
+
+        private bool TryParseToInt(PropertyNode node, out int value)
+        {
+            if (PropertyNodeParsers.TryParseToInt(node, out value, out var diagnostic))
+            {
+                return true;
+            }
+            else
+            {
+                _diagnostics.Add(diagnostic);
+                value = 0;
+                return false;
+            }
+        }
+
+        // エラー診断を追加するためのヘルパーメソッド
+        private void AddError(string message, TextSpan span, LinePosition linePosition)
+            => _diagnostics.Add(new Diagnostic(DiagnosticSeverity.Error, message, span, linePosition));
+        private void AddWarning(string message, TextSpan span, LinePosition linePosition)
+            => _diagnostics.Add(new Diagnostic(DiagnosticSeverity.Warning, message, span, linePosition));
+
+        // ビルダー。必須プロパティを null 許容型で保持し、ビルド時に不足しているプロパティをチェックする。
+        private class FormableCountryBuilder
+        {
+            internal string? Tag { get; set; }
+            internal List<string> States { get; set; } = [];
+            internal bool? UseCultureStates { get; set; }
+            internal decimal? RequiredStatesFraction { get; set; }
+            internal object? AIWillDo { get; set; }
+            internal object? Potential { get; set; }
+            internal object? Possible { get; set; }
+            internal string? GeographicRegion { get; set; }
+            internal bool? IsMajorFormation { get; set; }
+            internal string? UnificationPlay { get; set; }
+            internal string? LeadershipPlay { get; set; }
+            internal int? MaxNumFormationCandidates { get; set; }
+            internal object? CanBeFormationCandidate { get; set; }
+            internal object? CanBeUnificationTarget { get; set; }
+
+            internal FormableCountry Build()
+                => new(
+                    Tag: Tag!,
+                    States: States,
+                    UseCultureStates: UseCultureStates ?? false,
+                    RequiredStatesFraction: RequiredStatesFraction ?? 1,
+                    AIWillDo: AIWillDo,
+                    Potential: Potential,
+                    Possible: Possible,
+                    GeographicRegion: GeographicRegion,
+                    IsMajorFormation: IsMajorFormation ?? false,
+                    UnificationPlay: UnificationPlay,
+                    LeadershipPlay: LeadershipPlay,
+                    MaxNumFormationCandidates: MaxNumFormationCandidates,
+                    CanBeFormationCandidate: CanBeFormationCandidate,
+                    CanBeUnificationTarget: CanBeUnificationTarget
+                    );
+
+            internal List<string> GetMissingRequiredProperties()
+            {
+                var missingProperties = new List<string>();
+                if (Tag is null) missingProperties.Add("Tag");
+                if (States.Count == 0 && UseCultureStates != true && GeographicRegion is null) missingProperties.Add("States or UseCultureStates");
+                if (IsMajorFormation == true)
+                {
+                    if (UnificationPlay is null) missingProperties.Add("UnificationPlay (required when IsMajorFormation is true)");
+                    if (LeadershipPlay is null) missingProperties.Add("LeadershipPlay (required when IsMajorFormation is true)");
+                    if (MaxNumFormationCandidates is null) missingProperties.Add("MaxNumFormationCandidates (required when IsMajorFormation is true)");
+                    if (CanBeFormationCandidate is null) missingProperties.Add("CanBeFormationCandidate (required when IsMajorFormation is true)");
+                }
+                return missingProperties;
+            }
+        }
+    }
+}
+```
+
+```Victoria3.Loading\Loaders\HistoricalStateRegionLoader.cs
+using PdxScriptAnalysis;
+using PdxScriptAnalysis.Diagnostics;
+using PdxScriptAnalysis.Syntax;
+using PdxScriptAnalysis.Text;
+using System.Diagnostics.CodeAnalysis;
+using Victoria3.GameData;
+
+namespace Victoria3.Loading.Loaders
+{
+    /// <summary>
+    /// 歴史的州地域のデータをロードするクラス。
+    /// </summary>
+    /// <param name="trees">読み込むスクリプトツリーのコレクション。</param>
+    public class HistoricalStateRegionLoader(IEnumerable<ScriptTree> trees) : ILoader<HistoricalStateRegion>
+    {
+        private readonly IEnumerable<ScriptTree> _trees = trees;
+        private readonly List<Diagnostic> _diagnostics = [];
+
+        /// <inheritdoc/>
+        public LoadOutput<HistoricalStateRegion> Load()
+        {
+            _diagnostics.Clear();
+            var historicalStateRegions = new List<HistoricalStateRegion>();
+
+            foreach (var tree in _trees)
+            {
+                var historicalStateRegionsFromTree = LoadFromTree(tree);
+                historicalStateRegions.AddRange(historicalStateRegionsFromTree);
+            }
+
+            return new LoadOutput<HistoricalStateRegion>(historicalStateRegions, _diagnostics);
+        }
+
+        private List<HistoricalStateRegion> LoadFromTree(ScriptTree tree)
+        {
+            var historicalStateRegions = new List<HistoricalStateRegion>();
+
+            if (tree.Root.Children.Count != 1)
+            {
+                AddError($"Expected exactly one top-level node in the script tree, but found {tree.Root.Children.Count}.", tree.Root.Span, tree.Root.LinePosition);
+                return historicalStateRegions;
+            }
+            var topLevelNode = tree.Root.Children[0];
+            if (topLevelNode is not BlockPropertyNode blockPropertyNode)
+            {
+                AddError($"Unexpected top-level node of type {topLevelNode.GetType().Name}. Expected a BlockPropertyNode representing the root of the historical state region definition.", topLevelNode.Span, topLevelNode.LinePosition);
+                return historicalStateRegions;
+            }
+            if (blockPropertyNode.Key.Text != "STATES")
+            {
+                AddError($"Unexpected top-level block with key \"{blockPropertyNode.Key.Text}\". Expected a block with the key \"STATES\" representing the root of the historical state region definition.", blockPropertyNode.Key.Span, blockPropertyNode.Key.LinePosition);
+                return historicalStateRegions;
+            }
+
+            foreach (var node in blockPropertyNode.Value.Children)
+            {
+                if (node is not BlockPropertyNode blockNode)
+                {
+                    AddError($"Unexpected child node of type {node.GetType().Name} under the top-level STATES block. Expected a BlockPropertyNode representing a historical state region definition.", node.Span, node.LinePosition);
+                    continue;
+                }
+
+                if (TryLoadHistoricalStateRegion(blockNode, out var historicalStateRegion))
+                {
+                    historicalStateRegions.Add(historicalStateRegion);
+                }
+            }
+
+            return historicalStateRegions;
+        }
+
+        private bool TryLoadHistoricalStateRegion(BlockPropertyNode node, [NotNullWhen(true)] out HistoricalStateRegion historicalStateRegion)
+        {
+            var historicalStateRegionBuilder = new HistoricalStateRegionBuilder();
+
+            var tag = node.Key.Text;
+            historicalStateRegionBuilder.Tag = tag;
+
+            foreach (var child in node.Value.Children)
+            {
+                if (child is not PropertyNode propertyNode)
+                {
+                    AddError($"Unexpected child node of type {child.GetType().Name}. Expected a PropertyNode.", child.Span, child.LinePosition);
+                    continue;
+                }
+
+                switch (propertyNode.Key.Text)
+                {
+                    case "create_state":
+                        if (TryParseToCreateState(propertyNode, out var createState)) historicalStateRegionBuilder.CreateStates.Add(createState);
+                        break;
+                    case "add_homeland":
+                        if (TryParseToString(propertyNode, out var homeland)) historicalStateRegionBuilder.Homelands.Add(homeland);
+                        break;
+                    case "add_claim":
+                        if (TryParseToString(propertyNode, out var claim)) historicalStateRegionBuilder.Claims.Add(claim);
+                        break;
+                    default:
+                        AddWarning($"Unexpected property \"{propertyNode.Key.Text}\" in country definition. This property will be ignored.", propertyNode.Key.Span, propertyNode.LinePosition);
+                        break;
+                }
+            }
+
+            var missings = historicalStateRegionBuilder.GetMissingRequiredProperties();
+            if (missings.Count > 0)
+            {
+                AddError($"Missing required properties for formable country with tag \"{tag}\": {string.Join(", ", missings)}.", node.Span, node.LinePosition);
+                historicalStateRegion = default!;
+                return false;
+            }
+
+            historicalStateRegion = historicalStateRegionBuilder.Build();
+            return true;
+        }
+
+        private bool TryParseToString(PropertyNode node, [NotNullWhen(true)] out string value)
+        {
+            if (PropertyNodeParsers.TryParseToString(node, out value, out var diagnostic))
+            {
+                return true;
+            }
+            else
+            {
+                _diagnostics.Add(diagnostic);
+                value = null!;
+                return false;
+            }
+        }
+
+        private bool TryParseToCreateState(PropertyNode node, [NotNullWhen(true)] out CreateState value)
+        {
+            if (node is not BlockPropertyNode createStateBlockNode)
+            {
+                AddError($"Expected a block property node for \"{node.Key.Text}\", but found a different type of node.", node.Span, node.LinePosition);
+                value = null!;
+                return false;
+            }
+            var createStateNodes = createStateBlockNode.Value.Children;
+            if (!(createStateNodes.Count == 2 || createStateNodes.Count == 3))
+            {
+                AddError($"Expected exactly 2 or 3 child nodes under the \"{node.Key.Text}\" block for state creation definition, but found {createStateBlockNode.Value.Children.Count}.", createStateBlockNode.Span, createStateBlockNode.LinePosition);
+                value = null!;
+                return false;
+            }
+            if (!(createStateNodes.Any(n => n is ScalarPropertyNode scalar && scalar.Key.Text == "country") && createStateNodes.Any(n => n is BlockPropertyNode block && block.Key.Text == "owned_provinces")))
+            {
+                AddError($"Expected exactly one scalar property node with key \"country\" and one block property node with key \"owned_provinces\" under the \"create_state\" block for state creation definition, but the expected nodes were not found.", createStateBlockNode.Span, createStateBlockNode.LinePosition);
+                value = null!;
+                return false;
+            }
+            var country = createStateNodes
+                .OfType<ScalarPropertyNode>()
+                .FirstOrDefault(n => n.Key.Text == "country")?
+                .Value.Token.Text;
+            if (country is null)
+            {
+                AddError($"Expected a scalar property node with key \"country\" under the \"create_state\" block for state creation definition, but it was not found.", createStateBlockNode.Span, createStateBlockNode.LinePosition);
+                value = null!;
+                return false;
+            }
+            var provincesNode = createStateNodes
+                .OfType<BlockPropertyNode>()
+                .FirstOrDefault(n => n.Key.Text == "owned_provinces");
+            if (provincesNode is null)
+            {
+                AddError($"Expected a block property node with key \"owned_provinces\" under the \"create_state\" block for state creation definition, but it was not found.", createStateBlockNode.Span, createStateBlockNode.LinePosition);
+                value = null!;
+                return false;
+            }
+            if (provincesNode.Value.Children.Any(c => c is not ScalarNode))
+            {
+                AddError($"Expected all child nodes under the \"owned_provinces\" block to be scalar nodes representing province IDs, but found child nodes of different types.", provincesNode.Span, provincesNode.LinePosition);
+                value = null!;
+                return false;
+            }
+            if (createStateNodes.Count == 3 && !createStateNodes.Any(n => n is ScalarPropertyNode scalar && scalar.Key.Text == "state_type"))
+            {
+                AddError($"Expected a scalar property node with key \"state_type\" as the optional third child node under the \"create_state\" block for state creation definition, but it was not found.", createStateBlockNode.Span, createStateBlockNode.LinePosition);
+                value = null!;
+                return false;
+            }
+            var stateType = createStateNodes
+                .OfType<ScalarPropertyNode>()
+                .FirstOrDefault(n => n.Key.Text == "state_type")?
+                .Value.Token.Text;
+            var provinces = provincesNode
+                .Value.Children
+                .OfType<ScalarNode>()
+                .Select(n => n.Token.Text)
+                .ToList();
+
+            value = new CreateState(country, stateType, provinces);
+            return true;
+        }
+
+        // エラー診断を追加するためのヘルパーメソッド
+        private void AddError(string message, TextSpan span, LinePosition linePosition)
+            => _diagnostics.Add(new Diagnostic(DiagnosticSeverity.Error, message, span, linePosition));
+
+        private void AddWarning(string message, TextSpan span, LinePosition linePosition)
+            => _diagnostics.Add(new Diagnostic(DiagnosticSeverity.Warning, message, span, linePosition));
+
+        // 歴史的州地域のビルダークラス。必須プロパティを null 許容型で保持し、ビルド時に不足しているプロパティをチェックする。
+        private class HistoricalStateRegionBuilder
+        {
+            internal string? Tag { get; set; }
+            internal List<CreateState> CreateStates { get; set; } = [];
+            internal List<string> Homelands { get; set; } = [];
+            internal List<string> Claims { get; set; } = [];
+
+            internal HistoricalStateRegion Build()
+                => new(
+                    Tag: Tag!,
+                    CreateStates: CreateStates,
+                    Homelands: Homelands,
+                    Claims: Claims
+                    );
+
+            internal List<string> GetMissingRequiredProperties()
+            {
+                var missingProperties = new List<string>();
+                if (Tag is null) missingProperties.Add("Tag");
+                return missingProperties;
+            }
+        }
+    }
+}
+```
+
+```Victoria3.Loading\Loaders\ILoader.cs
+namespace Victoria3.Loading.Loaders
+{
+    /// <summary>
+    /// ロード処理を表すインターフェース。
+    /// </summary>
+    /// <typeparam name="T">ロードされるデータの型。</typeparam>
+    public interface ILoader<T>
+    {
+        /// <summary>
+        /// ゲームデータをロードするメソッド。
+        /// </summary>
+        /// <returns>読み込まれたデータと診断情報を含む <see cref="LoadOutput{T}"/> オブジェクト</returns>
+        public LoadOutput<T> Load();
+    }
+}
+```
+
+```Victoria3.Loading\Loaders\PropertyNodeParsers.cs
+using PdxScriptAnalysis.Diagnostics;
+using PdxScriptAnalysis.Syntax;
+using PdxScriptAnalysis.Text;
+using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
+using Victoria3.GameData;
+
+namespace Victoria3.Loading.Loaders
+{
+    /// <summary>
+    /// 汎用的なプロパティノードのパーサーを提供する静的クラス。プロパティノードを特定の型(文字列、ブール値、数値など)に変換するためのメソッドを含む。
+    /// </summary>
+    internal static class PropertyNodeParsers
+    {
+        /// <summary>
+        /// プロパティノードを文字列に変換しようとする。
+        /// ノードがスカラーでない場合や、スカラーの値が文字列でない場合は、適切な診断情報を返す。
+        /// </summary>
+        /// <param name="node">変換対象のプロパティノード。</param>
+        /// <param name="value">変換結果の文字列。</param>
+        /// <param name="diagnostic">変換に失敗した場合の診断情報。</param>
+        /// <returns>変換が成功した場合はtrue、失敗した場合はfalse。</returns>
+        internal static bool TryParseToString(
+            PropertyNode node,
+            [NotNullWhen(true)] out string value,
+            [NotNullWhen(false)] out Diagnostic diagnostic)
+        {
+            if (node is not ScalarPropertyNode scalar)
+            {
+                value = null!;
+                diagnostic = CreateError($"Expected a scalar property node for property \"{node.Key.Text}\", but found a different type of node.", node.Span, node.LinePosition);
+                return false;
+            }
+
+            value = scalar.Value.Token.Text;
+            diagnostic = null!;
+            return true;
+        }
+
+        /// <summary>
+        /// プロパティノードを文字列のリストに変換しようとする。
+        /// ノードがブロックでない場合や、ブロックの子ノードがすべてスカラーでない場合は、適切な診断情報を返す。
+        /// </summary>
+        /// <param name="node">変換対象のプロパティノード。</param>
+        /// <param name="values">変換結果の文字列リスト。</param>
+        /// <param name="diagnostic">変換に失敗した場合の診断情報。</param>
+        /// <returns>変換が成功した場合はtrue、失敗した場合はfalse。</returns>
+        internal static bool TryParseToStringList(
+            PropertyNode node,
+            [NotNullWhen(true)] out List<string> values,
+            [NotNullWhen(false)] out Diagnostic diagnostic)
+        {
+            if (node is not BlockPropertyNode block)
+            {
+                values = null!;
+                diagnostic = CreateError($"Expected a block property node for property \"{node.Key.Text}\", but found a different type of node.", node.Span, node.LinePosition);
+                return false;
+            }
+
+            if (block.Value.Children.Any(c => c is not ScalarNode))
+            {
+                values = null!;
+                diagnostic = CreateError($"Expected all children of the block for property \"{node.Key.Text}\" to be scalar nodes representing string values, but found child nodes of different types.", block.Span, block.LinePosition);
+                return false;
+            }
+
+            values = block.Value.Children
+                .OfType<ScalarNode>()
+                .Select(n => n.Token.Text)
+                .ToList();
+            diagnostic = null!;
+            return true;
+        }
+
+        /// <summary>
+        /// プロパティノードを真偽値に変換しようとする。
+        /// ノードがスカラーでない場合や、スカラーの値が "yes" または "no" でない場合は、適切な診断情報を返す。
+        /// </summary>
+        /// <param name="node">変換対象のプロパティノード。</param>
+        /// <param name="value">変換結果の真偽値。</param>
+        /// <param name="diagnostic">変換に失敗した場合の診断情報。</param>
+        /// <returns>変換が成功した場合はtrue、失敗した場合はfalse。</returns>
+        internal static bool TryParseToBool(
+            PropertyNode node,
+            out bool value,
+            [NotNullWhen(false)] out Diagnostic diagnostic)
+        {
+            if (node is not ScalarPropertyNode scalar)
+            {
+                value = default;
+                diagnostic = CreateError($"Expected a scalar property node for property \"{node.Key.Text}\", but found a different type of node.", node.Span, node.LinePosition);
+                return false;
+            }
+
+            switch (scalar.Value.Token.Text)
+            {
+                case "yes":
+                    value = true;
+                    diagnostic = null!;
+                    return true;
+                case "no":
+                    value = false;
+                    diagnostic = null!;
+                    return true;
+                default:
+                    value = default;
+                    diagnostic = CreateError($"Expected the value of property \"{node.Key.Text}\" to be \"yes\" or \"no\", but found \"{scalar.Value.Token.Text}\".", scalar.Value.Span, scalar.Value.LinePosition);
+                    return false;
+            }
+        }
+
+        /// <summary>
+        /// プロパティノードを整数に変換しようとする。
+        /// ノードがスカラーでない場合や、スカラーの値が有効な整数でない場合は、適切な診断情報を返す。
+        /// </summary>
+        /// <param name="node">変換対象のプロパティノード。</param>
+        /// <param name="value">変換結果の整数値。</param>
+        /// <param name="diagnostic">変換に失敗した場合の診断情報。</param>
+        /// <returns>変換が成功した場合はtrue、失敗した場合はfalse。</returns>
+        internal static bool TryParseToInt(
+            PropertyNode node,
+            out int value,
+            [NotNullWhen(false)] out Diagnostic diagnostic)
+        {
+            if (node is not ScalarPropertyNode scalar)
+            {
+                value = default;
+                diagnostic = CreateError($"Expected a scalar property node for property \"{node.Key.Text}\", but found a different type of node.", node.Span, node.LinePosition);
+                return false;
+            }
+
+            if (!int.TryParse(scalar.Value.Token.Text, NumberStyles.Integer, CultureInfo.InvariantCulture, out value))
+            {
+                value = default;
+                diagnostic = CreateError($"Expected the value of property \"{node.Key.Text}\" to be a valid integer number, but found \"{scalar.Value.Token.Text}\".", scalar.Value.Span, scalar.Value.LinePosition);
+                return false;
+            }
+
+            diagnostic = null!;
+            return true;
+        }
+
+        /// <summary>
+        /// プロパティノードを十進数に変換しようとする。
+        /// ノードがスカラーでない場合や、スカラーの値が有効な十進数でない場合は、適切な診断情報を返す。
+        /// </summary>
+        /// <param name="node">変換対象のプロパティノード。</param>
+        /// <param name="value">変換結果の十進数値。</param>
+        /// <param name="diagnostic">変換に失敗した場合の診断情報。</param>
+        /// <returns>変換が成功した場合はtrue、失敗した場合はfalse。</returns>
+        internal static bool TryParseToDecimal(
+            PropertyNode node,
+            out decimal value,
+            [NotNullWhen(false)] out Diagnostic diagnostic)
+        {
+            if (node is not ScalarPropertyNode scalar)
+            {
+                value = default;
+                diagnostic = CreateError($"Expected a scalar property node for property \"{node.Key.Text}\", but found a different type of node.", node.Span, node.LinePosition);
+                return false;
+            }
+
+            if (!decimal.TryParse(scalar.Value.Token.Text, NumberStyles.Number, CultureInfo.InvariantCulture, out value))
+            {
+                value = default;
+                diagnostic = CreateError($"Expected the value of property \"{node.Key.Text}\" to be a valid decimal number, but found \"{scalar.Value.Token.Text}\".", scalar.Value.Span, scalar.Value.LinePosition);
+                return false;
+            }
+
+            diagnostic = null!;
+            return true;
+        }
+
+        /// <summary>
+        /// プロパティノードを列挙型の値に変換しようとする。
+        /// </summary>
+        /// <typeparam name="TEnum">変換先の列挙型。</typeparam>
+        /// <param name="node">変換対象のプロパティノード。</param>
+        /// <param name="value">変換結果の列挙型の値。</param>
+        /// <param name="diagnostic">変換に失敗した場合の診断情報。</param>
+        /// <returns>変換が成功した場合はtrue、失敗した場合はfalse。</returns>
+        internal static bool TryParseToEnum<TEnum>(
+            PropertyNode node,
+            out TEnum value,
+            [NotNullWhen(false)] out Diagnostic diagnostic)
+            where TEnum : struct, Enum
+        {
+            if (!TryParseToString(node, out var raw, out diagnostic))
+            {
+                value = default;
+                return false;
+            }
+
+            var normalizedRaw = raw
+                .Replace("_", "", StringComparison.OrdinalIgnoreCase)
+                .Replace("-", "", StringComparison.OrdinalIgnoreCase);
+
+            if (!Enum.TryParse(normalizedRaw, ignoreCase: true, out value))
+            {
+                value = default;
+                diagnostic = CreateError($"Invalid value \"{raw}\" for property \"{node.Key.Text}\". Expected one of: {string.Join(", ", Enum.GetNames<TEnum>())}.", node.Span, node.LinePosition);
+                return false;
+            }
+
+            diagnostic = null!;
+            return true;
+        }
+
+        /// <summary>
+        /// プロパティノードをゲーム内の色を表すGameColor構造体に変換しようとする。
+        /// </summary>
+        /// <param name="node">変換対象のプロパティノード。</param>
+        /// <param name="color">変換結果のGameColor構造体。</param>
+        /// <param name="diagnostic">変換に失敗した場合の診断情報。</param>
+        /// <returns>変換が成功した場合はtrue、失敗した場合はfalse。</returns>
+        internal static bool TryParseToGameColor(
+            PropertyNode node,
+            out GameColor color,
+            [NotNullWhen(false)] out Diagnostic diagnostic)
+        {
+            switch (node)
+            {
+                case BlockPropertyNode block:
+                    if (!TryParseFromBlockToColorValues(block.Value, node.Key.Text, out var colorValues, out diagnostic))
+                    {
+                        color = default;
+                        return false;
+                    }
+
+                    color = ColorConverter.FromRgb(colorValues[0], colorValues[1], colorValues[2]);
+                    diagnostic = null!;
+                    return true;
+                case TypedBlockPropertyNode typedBlock:
+                    if (!TryParseFromBlockToColorValues(typedBlock.Value, node.Key.Text, out var typedColorValues, out diagnostic))
+                    {
+                        color = default;
+                        return false;
+                    }
+
+                    var typeQualifier = typedBlock.TypeQualifier.Text;
+                    if (typeQualifier.Equals("hsv", StringComparison.OrdinalIgnoreCase))
+                    {
+                        color = ColorConverter.FromHsv(typedColorValues[0], typedColorValues[1], typedColorValues[2]);
+                        diagnostic = null!;
+                        return true;
+                    }
+                    else if (typeQualifier.Equals("hsv360", StringComparison.OrdinalIgnoreCase))
+                    {
+                        color = ColorConverter.FromHsv360(typedColorValues[0], typedColorValues[1], typedColorValues[2]);
+                        diagnostic = null!;
+                        return true;
+                    }
+                    else if (typeQualifier.Equals("rgb", StringComparison.OrdinalIgnoreCase))
+                    {
+                        color = ColorConverter.FromRgb(typedColorValues[0], typedColorValues[1], typedColorValues[2]);
+                        diagnostic = null!;
+                        return true;
+                    }
+                    else
+                    {
+                        color = default;
+                        diagnostic = CreateError($"Invalid type qualifier \"{typeQualifier}\" for typed block property \"{node.Key.Text}\". Expected one of: \"rgb\", \"hsv\", \"hsv360\".", typedBlock.TypeQualifier.Span, typedBlock.TypeQualifier.LinePosition);
+                        return false;
+                    }
+                default:
+                    color = default;
+                    diagnostic = CreateError($"Expected a block or typed block property node for property \"{node.Key.Text}\", but found a different type of node.", node.Span, node.LinePosition);
+                    return false;
+            }
+        }
+
+        // ブロックノードの子ノードを色の値として解析するためのヘルパーメソッド
+        private static bool TryParseFromBlockToColorValues(BlockNode block, string propertyName, out decimal[] colorValues, [NotNullWhen(false)] out Diagnostic diagnostic)
+        {
+            if (block.Children.Count != 3)
+            {
+                colorValues = [];
+                diagnostic = CreateError($"Expected a block with exactly 3 children for property \"{propertyName}\" to represent RGB values, but found a block with {block.Children.Count} children.", block.Span, block.LinePosition);
+                return false;
+            }
+
+            if (block.Children.Any(c => c is not ScalarNode))
+            {
+                colorValues = [];
+                diagnostic = CreateError($"Expected all children of the block for property \"{propertyName}\" to be scalar nodes representing numeric color values, but found child nodes of different types.", block.Span, block.LinePosition);
+                return false;
+            }
+
+            var colorValueNodes = block.Children.OfType<ScalarNode>().ToList();
+
+            colorValues = new decimal[3];
+            for (int i = 0; i < 3; i++)
+            {
+                if (!decimal.TryParse(colorValueNodes[i].Token.Text, out colorValues[i]))
+                {
+                    colorValues = [];
+                    diagnostic = CreateError($"Expected the value of child node {i + 1} of the block for property \"{propertyName}\" to be a valid decimal number representing a color component, but found \"{colorValueNodes[i].Token.Text}\".", colorValueNodes[i].Span, colorValueNodes[i].LinePosition);
+                    return false;
+                }
+            }
+            diagnostic = null!;
+            return true;
+        }
+
+
+        // エラー診断を作成するためのヘルパーメソッド。エラーメッセージ、テキストスパン、および行位置を受け取り、Diagnosticオブジェクトを返す。
+        private static Diagnostic CreateError(string message, TextSpan span, LinePosition linePosition)
+            => new(DiagnosticSeverity.Error, message, span, linePosition);
+    }
+}
+```
+
+```Victoria3.Loading\Loaders\ReleasableCountryLoader.cs
+using PdxScriptAnalysis;
+using PdxScriptAnalysis.Diagnostics;
+using PdxScriptAnalysis.Syntax;
+using PdxScriptAnalysis.Text;
+using System.Diagnostics.CodeAnalysis;
+using Victoria3.GameData;
+
+namespace Victoria3.Loading.Loaders
+{
+    /// <summary>
+    /// 解放可能国家のデータをロードするクラス。
+    /// </summary>
+    /// <param name="trees">読み込むスクリプトツリーのコレクション。</param>
+    public class ReleasableCountryLoader(IEnumerable<ScriptTree> trees) : ILoader<ReleasableCountry>
+    {
+        private readonly IEnumerable<ScriptTree> _trees = trees;
+        private readonly List<Diagnostic> _diagnostics = [];
+
+        /// <inheritdoc/>
+        public LoadOutput<ReleasableCountry> Load()
+        {
+            _diagnostics.Clear();
+            var releasables = new List<ReleasableCountry>();
+
+            foreach (var tree in _trees)
+            {
+                var releasablesFromTree = LoadFromTree(tree);
+                releasables.AddRange(releasablesFromTree);
+            }
+
+            return new LoadOutput<ReleasableCountry>(releasables, _diagnostics);
+        }
+
+        private List<ReleasableCountry> LoadFromTree(ScriptTree tree)
+        {
+            var releasables = new List<ReleasableCountry>();
+
+            foreach (var topLevelNode in tree.Root.Children)
+            {
+                if (topLevelNode is not BlockPropertyNode blockNode)
+                {
+                    AddError($"Unexpected top-level node of type {topLevelNode.GetType().Name}. Expected a BlockPropertyNode representing a releasable country definition.", topLevelNode.Span, topLevelNode.LinePosition);
+                    continue;
+                }
+
+                if (TryLoadReleasableCountry(blockNode, out var releasableCountry))
+                {
+                    releasables.Add(releasableCountry);
+                }
+            }
+
+            return releasables;
+        }
+
+        private bool TryLoadReleasableCountry(BlockPropertyNode node, [NotNullWhen(true)] out ReleasableCountry releasableCountry)
+        {
+            var releasableCountryBuilder = new ReleasableCountryBuilder();
+
+            var tag = node.Key.Text;
+            releasableCountryBuilder.Tag = tag;
+
+            foreach (var child in node.Value.Children)
+            {
+                if (child is not PropertyNode propertyNode)
+                {
+                    AddError($"Unexpected child node of type {child.GetType().Name}. Expected a PropertyNode.", child.Span, child.LinePosition);
+                    continue;
+                }
+
+                switch (propertyNode.Key.Text)
+                {
+                    case "states":
+                    case "STATES":
+                        if (TryParseToStringList(propertyNode, out var states)) releasableCountryBuilder.States = states;
+                        break;
+                    case "provinces":
+                        if (TryParseToStringList(propertyNode, out var provinces)) releasableCountryBuilder.Provinces = provinces;
+                        break;
+                    case "use_culture_states":
+                        if (TryParseToBool(propertyNode, out var useCultureStates)) releasableCountryBuilder.UseCultureStates = useCultureStates;
+                        break;
+                    case "required_num_states":
+                        if (TryParseToInt(propertyNode, out var requiredNumStates)) releasableCountryBuilder.RequiredNumStates = requiredNumStates;
+                        break;
+                    case "ai_will_do":
+                        releasableCountryBuilder.AIWillDo = propertyNode;
+                        break;
+                    case "possible":
+                        releasableCountryBuilder.Possible = propertyNode;
+                        break;
+                    default:
+                        AddWarning($"Unexpected property \"{propertyNode.Key.Text}\" in country definition. This property will be ignored.", propertyNode.Key.Span, propertyNode.LinePosition);
+                        break;
+                }
+            }
+
+            var missings = releasableCountryBuilder.GetMissingRequiredProperties();
+            if (missings.Count > 0)
+            {
+                AddError($"Missing required properties for formable country with tag \"{tag}\": {string.Join(", ", missings)}.", node.Span, node.LinePosition);
+                releasableCountry = default!;
+                return false;
+            }
+
+            releasableCountry = releasableCountryBuilder.Build();
+            return true;
+        }
+
+
+        private bool TryParseToStringList(PropertyNode node, [NotNullWhen(true)] out List<string> values)
+        {
+            if (PropertyNodeParsers.TryParseToStringList(node, out values, out var diagnostic))
+            {
+                return true;
+            }
+            else
+            {
+                _diagnostics.Add(diagnostic);
+                values = null!;
+                return false;
+            }
+        }
+
+        private bool TryParseToBool(PropertyNode node, out bool value)
+        {
+            if (PropertyNodeParsers.TryParseToBool(node, out value, out var diagnostic))
+            {
+                return true;
+            }
+            else
+            {
+                _diagnostics.Add(diagnostic);
+                value = false;
+                return false;
+            }
+        }
+
+        private bool TryParseToInt(PropertyNode node, out int value)
+        {
+            if (PropertyNodeParsers.TryParseToInt(node, out value, out var diagnostic))
+            {
+                return true;
+            }
+            else
+            {
+                _diagnostics.Add(diagnostic);
+                value = 0;
+                return false;
+            }
+        }
+
+        // エラー診断を追加するためのヘルパーメソッド
+        private void AddError(string message, TextSpan span, LinePosition linePosition)
+            => _diagnostics.Add(new Diagnostic(DiagnosticSeverity.Error, message, span, linePosition));
+
+        private void AddWarning(string message, TextSpan span, LinePosition linePosition)
+            => _diagnostics.Add(new Diagnostic(DiagnosticSeverity.Warning, message, span, linePosition));
+
+        // ビルダー。必須プロパティを null 許容型で保持し、ビルド時に不足しているプロパティをチェックする。
+        private class ReleasableCountryBuilder
+        {
+            internal string? Tag { get; set; }
+            internal List<string> States { get; set; } = [];
+            internal List<string> Provinces { get; set; } = [];
+            internal bool? UseCultureStates { get; set; }
+            internal int? RequiredNumStates { get; set; }
+            internal object? AIWillDo { get; set; }
+            internal object? Possible { get; set; }
+
+            internal ReleasableCountry Build()
+                => new(
+                    Tag: Tag!,
+                    States: States,
+                    Provinces: Provinces,
+                    UseCultureStates: UseCultureStates ?? false,
+                    RequiredNumStates: RequiredNumStates,
+                    AIWillDo: AIWillDo,
+                    Possible: Possible
+                    );
+
+            internal List<string> GetMissingRequiredProperties()
+            {
+                var missingProperties = new List<string>();
+                if (Tag is null) missingProperties.Add("Tag");
+                if (States.Count == 0 && Provinces.Count == 0 && UseCultureStates != true) missingProperties.Add("States or Provinces or UseCultureStates");
+                return missingProperties;
+            }
+        }
+    }
+}
+```
+
+```Victoria3.Loading.Tests\Loaders\CountryLoaderTests.cs
 using FluentAssertions;
 using PdxScriptAnalysis;
+using Victoria3.GameData;
 using Victoria3.Loading.Loaders;
 
 namespace Victoria3.Loading.Tests.Loaders
 {
-    public class CountryLoaderErrorTests
+    public class CountryLoaderTests
     {
+        private const string MinimalCountry = """
+        GER = {
+            color = { 147 130 110 }
+            country_type = recognized
+            tier = empire
+            cultures = { north_german }
+            capital = STATE_BRANDENBURG
+        }
+        """;
 
-        // テスト用の ScriptTree を生成するヘルパーメソッド
-        private static ScriptTree ParseTree(string text)
-            => ScriptTree.ParseText(text);
-
-        // 複数の ScriptTree を生成するヘルパーメソッド
         private static IEnumerable<ScriptTree> ParseTrees(params string[] texts)
             => texts.Select(ScriptTree.ParseText);
 
+        // --- 正常系 ---
 
-        // --- 必須フィールド欠損 ---
+        [Fact(DisplayName = "最小構成のデータを読み込むと必須フィールドが正しく読み込まれる")]
+        public void Load_MinimalCountry_ParsesRequiredFields()
+        {
+            var loader = new CountryLoader(ParseTrees(MinimalCountry));
+            var output = loader.Load();
 
-        [Fact(DisplayName = "Color が欠損している場合、エラーが返される")]
-        public void Load_MissingColor_ReturnsErrorAndNoCountry()
+            output.Diagnostics.Should().BeEmpty();
+            output.Values.Should().ContainSingle();
+
+            var country = output.Values[0];
+            country.Tag.Should().Be("GER");
+            country.Color.Should().Be(new GameColor(147, 130, 110));
+            country.Type.Should().Be(CountryType.Recognized);
+            country.Tier.Should().Be(CountryTier.Empire);
+            country.Cultures.Should().Equal("north_german");
+            country.Capital.Should().Be("STATE_BRANDENBURG");
+        }
+
+        [Fact(DisplayName = "最小構成のデータを読み込むとオプションフィールドはデフォルト値になる")]
+        public void Load_MinimalCountry_OptionalFieldsHaveDefaultValues()
+        {
+            var loader = new CountryLoader(ParseTrees(MinimalCountry));
+            var output = loader.Load();
+
+            var country = output.Values[0];
+            country.SocialHierarchy.Should().BeNull();
+            country.Religion.Should().BeNull();
+            country.IsNamedFromCapital.Should().BeFalse();
+            country.ValidAsHomeCountryForSeparatists.Should().BeNull();
+            country.PrimaryUnitColor.Should().BeNull();
+            country.SecondaryUnitColor.Should().BeNull();
+            country.TertiaryUnitColor.Should().BeNull();
+        }
+
+        [Fact(DisplayName = "すべてのオプションフィールドをロードできる")]
+        public void Load_AllOptionalFields_CanBeLoaded()
+        {
+            var input = """
+            JPN = {
+                color = { 255 0 0 }
+                country_type = recognized
+                tier = empire
+                social_hierarchy = monarchy
+                religion = shinto
+                cultures = { japanese }
+                capital = STATE_KANTO
+                is_named_from_capital = yes
+                valid_as_home_country_for_separatists = { foo = bar }
+                primary_unit_color = rgb { 10 20 30 }
+                secondary_unit_color = hsv { 0.0 0.0 1.0 }
+                tertiary_unit_color = hsv360 { 0 0 100 }
+            }
+            """;
+
+            var loader = new CountryLoader(ParseTrees(input));
+            var output = loader.Load();
+
+            output.Diagnostics.Should().BeEmpty();
+            output.Values.Should().ContainSingle();
+
+            var country = output.Values[0];
+            country.SocialHierarchy.Should().Be("monarchy");
+            country.Religion.Should().Be("shinto");
+            country.IsNamedFromCapital.Should().BeTrue();
+            country.ValidAsHomeCountryForSeparatists.Should().NotBeNull();
+            country.PrimaryUnitColor.Should().Be(new GameColor(10, 20, 30));
+            country.SecondaryUnitColor.Should().Be(new GameColor(255, 255, 255));
+            country.TertiaryUnitColor.Should().Be(new GameColor(255, 255, 255));
+        }
+
+        [Fact(DisplayName = "1つのスクリプトツリー上の複数データをロードできる")]
+        public void Load_MultipleCountriesInSingleTree_CanBeLoaded()
         {
             var input = """
             GER = {
+                color = { 147 130 110 }
+                country_type = recognized
+                tier = empire
+                cultures = { north_german }
+                capital = STATE_BRANDENBURG
+            }
+            FRA = {
+                color = { 50 100 200 }
+                country_type = recognized
+                tier = kingdom
+                cultures = { french }
+                capital = STATE_ILE_DE_FRANCE
+            }
+            """;
+
+            var loader = new CountryLoader(ParseTrees(input));
+            var output = loader.Load();
+
+            output.Diagnostics.Should().BeEmpty();
+            output.Values.Select(x => x.Tag).Should().Equal("GER", "FRA");
+        }
+
+        [Fact(DisplayName = "複数のスクリプトツリーのデータをロードできる")]
+        public void Load_MultipleTrees_CanBeLoaded()
+        {
+            var tree1 = """
+            GER = {
+                color = { 147 130 110 }
                 country_type = recognized
                 tier = empire
                 cultures = { north_german }
                 capital = STATE_BRANDENBURG
             }
             """;
-
-            var loader = new CountryLoader(ParseTrees(input));
+            var tree2 = """
+            FRA = {
+                color = { 50 100 200 }
+                country_type = recognized
+                tier = kingdom
+                cultures = { french }
+                capital = STATE_ILE_DE_FRANCE
+            }
+            """;
+            var loader = new CountryLoader(ParseTrees(tree1, tree2));
             var output = loader.Load();
+
+            output.Diagnostics.Should().BeEmpty();
+            output.Values.Select(x => x.Tag).Should().Equal("GER", "FRA");
+        }
+
+        [Theory(DisplayName = "CountryType のパース（Country固有データ）が正しく動作する")]
+        [InlineData("recognized", CountryType.Recognized)]
+        [InlineData("colonial", CountryType.Colonial)]
+        [InlineData("unrecognized", CountryType.Unrecognized)]
+        [InlineData("decentralized", CountryType.Decentralized)]
+        public void Load_CountryTypeParsing_Works(string rawType, CountryType expected)
+        {
+            var input = $$"""
+            X = {
+                color = { 1 2 3 }
+                country_type = {{rawType}}
+                tier = empire
+                cultures = { foo }
+                capital = STATE_X
+            }
+            """;
+            var output = new CountryLoader(ParseTrees(input)).Load();
+
+            output.Diagnostics.Should().BeEmpty();
+            output.Values[0].Type.Should().Be(expected);
+        }
+
+        [Theory(DisplayName = "CountryTier のパース（Country固有データ）が正しく動作する")]
+        [InlineData("hegemony", CountryTier.Hegemony)]
+        [InlineData("empire", CountryTier.Empire)]
+        [InlineData("grand-principality", CountryTier.GrandPrincipality)]
+        public void Load_CountryTierParsing_Works(string rawTier, CountryTier expected)
+        {
+            var input = $$"""
+            X = {
+                color = { 1 2 3 }
+                country_type = recognized
+                tier = {{rawTier}}
+                cultures = { foo }
+                capital = STATE_X
+            }
+            """;
+            var output = new CountryLoader(ParseTrees(input)).Load();
+
+            output.Diagnostics.Should().BeEmpty();
+            output.Values[0].Tier.Should().Be(expected);
+        }
+
+        [Fact(DisplayName = "Color のパース（Country固有データ）が正しく動作する")]
+        public void Load_ColorParsing_Works()
+        {
+            var input = """
+            X = {
+                color = hsv360 { 0 0 100 }
+                country_type = recognized
+                tier = empire
+                cultures = { foo }
+                capital = STATE_X
+            }
+            """;
+            var output = new CountryLoader(ParseTrees(input)).Load();
+
+            output.Diagnostics.Should().BeEmpty();
+            output.Values[0].Color.Should().Be(new GameColor(255, 255, 255));
+        }
+
+        [Fact(DisplayName = "Load() を再呼び出しすると診断がリセットされる")]
+        public void Load_CalledTwice_DiagnosticsAreReset()
+        {
+            var invalid = """
+            X = {
+                country_type = recognized
+                tier = empire
+                cultures = { foo }
+                capital = STATE_X
+            }
+            """;
+            var loader = new CountryLoader(ParseTrees(invalid));
+
+            var first = loader.Load();
+            var second = loader.Load();
+
+            first.Diagnostics.Count(d => d.IsError).Should().Be(1);
+            second.Diagnostics.Count(d => d.IsError).Should().Be(1); // 累積しない
+        }
+
+        // --- 異常系 ---
+
+        [Theory(DisplayName = "各必須フィールドの欠損でエラーになる")]
+        [InlineData("""
+            GER = {
+                country_type = recognized
+                tier = empire
+                cultures = { north_german }
+                capital = STATE_BRANDENBURG
+            }
+            """, "Color")]
+        [InlineData("""
+            GER = {
+                color = { 147 130 110 }
+                tier = empire
+                cultures = { north_german }
+                capital = STATE_BRANDENBURG
+            }
+            """, "Type")]
+        [InlineData("""
+            GER = {
+                color = { 147 130 110 }
+                country_type = recognized
+                cultures = { north_german }
+                capital = STATE_BRANDENBURG
+            }
+            """, "Tier")]
+        [InlineData("""
+            GER = {
+                color = { 147 130 110 }
+                country_type = recognized
+                tier = empire
+                capital = STATE_BRANDENBURG
+            }
+            """, "Cultures")]
+        public void Load_MissingRequiredField_ReturnsError(string input, string missingField)
+        {
+            var output = new CountryLoader(ParseTrees(input)).Load();
+
+            output.Values.Should().BeEmpty();
+            output.Diagnostics.Should().ContainSingle(d => d.IsError && d.Message.Contains(missingField));
+        }
+
+        [Fact(DisplayName = "トップレベルノードが無効ならエラー")]
+        public void Load_InvalidTopLevelNode_ReturnsError()
+        {
+            var output = new CountryLoader(ParseTrees("some_scalar_value")).Load();
 
             output.Values.Should().BeEmpty();
             output.Diagnostics.Should().ContainSingle(d => d.IsError);
-            output.Diagnostics[0].Message.Should().Contain("Color");
         }
 
-        [Fact(DisplayName = "Type が欠損している場合、エラーが返される")]
-        public void Load_MissingType_ReturnsErrorAndNoCountry()
-        {
-            var input = """
-            GER = {
-                color = { 147 130 110 }
-                tier = empire
-                cultures = { north_german }
-                capital = STATE_BRANDENBURG
-            }
-            """;
-
-            var loader = new CountryLoader(ParseTrees(input));
-            var output = loader.Load();
-
-            output.Values.Should().BeEmpty();
-            output.Diagnostics.Should().ContainSingle(d => d.IsError);
-            output.Diagnostics[0].Message.Should().Contain("Type");
-        }
-
-        [Fact(DisplayName = "Tier が欠損している場合、エラーが返される")]
-        public void Load_MissingTier_ReturnsErrorAndNoCountry()
-        {
-            var input = """
-            GER = {
-                color = { 147 130 110 }
-                country_type = recognized
-                cultures = { north_german }
-                capital = STATE_BRANDENBURG
-            }
-            """;
-
-            var loader = new CountryLoader(ParseTrees(input));
-            var output = loader.Load();
-
-            output.Values.Should().BeEmpty();
-            output.Diagnostics.Should().ContainSingle(d => d.IsError);
-            output.Diagnostics[0].Message.Should().Contain("Tier");
-        }
-
-        [Fact(DisplayName = "Cultures が欠損している場合、エラーが返される")]
-        public void Load_MissingCultures_ReturnsErrorAndNoCountry()
-        {
-            var input = """
-            GER = {
-                color = { 147 130 110 }
-                country_type = recognized
-                tier = empire
-                capital = STATE_BRANDENBURG
-            }
-            """;
-
-            var loader = new CountryLoader(ParseTrees(input));
-            var output = loader.Load();
-
-            output.Values.Should().BeEmpty();
-            output.Diagnostics.Should().ContainSingle(d => d.IsError);
-            output.Diagnostics[0].Message.Should().Contain("Cultures");
-        }
-
-        [Fact(DisplayName = "複数の必須フィールドが欠損している場合、エラーメッセージにすべての欠損フィールドが含まれる")]
-        public void Load_MultipleRequiredFieldsMissing_ErrorMessageContainsAllMissingFields()
-        {
-            var input = """
-            GER = {
-                color = { 147 130 110 }
-                country_type = recognized
-            }
-            """;
-
-            var loader = new CountryLoader(ParseTrees(input));
-            var output = loader.Load();
-
-            output.Values.Should().BeEmpty();
-            output.Diagnostics.Should().ContainSingle(d => d.IsError);
-
-            var message = output.Diagnostics[0].Message;
-            message.Should().Contain("Tier");
-            message.Should().Contain("Cultures");
-        }
-
-        // --- 不正な値 ---
-
-        [Fact(DisplayName = "不正な CountryType が指定されている場合、エラーが返される")]
-        public void Load_UnknownCountryType_ReturnsError()
-        {
-            var input = """
-            GER = {
-                color = { 147 130 110 }
-                country_type = republic
-                tier = empire
-                cultures = { north_german }
-                capital = STATE_BRANDENBURG
-            }
-            """;
-
-            var loader = new CountryLoader(ParseTrees(input));
-            var output = loader.Load();
-
-            output.Values.Should().BeEmpty();
-            output.Diagnostics.Should().Contain(d => d.IsError && d.Message.Contains("republic"));
-        }
-
-        [Fact(DisplayName = "不正な CountryTier が指定されている場合、エラーが返される")]
-        public void Load_UnknownTier_ReturnsError()
-        {
-            var input = """
-            GER = {
-                color = { 147 130 110 }
-                country_type = recognized
-                tier = duchy
-                cultures = { north_german }
-                capital = STATE_BRANDENBURG
-            }
-            """;
-
-            var loader = new CountryLoader(ParseTrees(input));
-            var output = loader.Load();
-
-            output.Values.Should().BeEmpty();
-            output.Diagnostics.Should().Contain(d => d.IsError && d.Message.Contains("duchy"));
-        }
-
-        [Fact(DisplayName = "不正な is_named_from_capital が指定されている場合、エラーが返される")]
-        public void Load_InvalidIsNamedFromCapital_ReturnsError()
-        {
-            var input = """
-            GER = {
-                color = { 147 130 110 }
-                country_type = recognized
-                tier = empire
-                cultures = { north_german }
-                capital = STATE_BRANDENBURG
-                is_named_from_capital = true
-            }
-            """;
-
-            var loader = new CountryLoader(ParseTrees(input));
-            var output = loader.Load();
-
-            // is_named_from_capital のエラーが記録されること
-            output.Diagnostics.Should().Contain(d => d.IsError && d.Message.Contains("is_named_from_capital"));
-        }
-
-        // --- 色ブロックのエラー ---
-
-        [Fact(DisplayName = "Color ブロックの要素数が不正な場合、エラーが返される")]
-        public void Load_ColorBlockWithWrongElementCount_ReturnsError()
-        {
-            var input = """
-            GER = {
-                color = { 147 130 }
-                country_type = recognized
-                tier = empire
-                cultures = { north_german }
-                capital = STATE_BRANDENBURG
-            }
-            """;
-
-            var loader = new CountryLoader(ParseTrees(input));
-            var output = loader.Load();
-
-            output.Values.Should().BeEmpty();
-            output.Diagnostics.Should().Contain(d => d.IsError && d.Message.Contains("color"));
-        }
-
-        [Fact(DisplayName = "Color ブロックに数値以外の値が含まれている場合、エラーが返される")]
-        public void Load_ColorBlockWithNonNumericValue_ReturnsError()
-        {
-            var input = """
-            GER = {
-                color = { 147 abc 110 }
-                country_type = recognized
-                tier = empire
-                cultures = { north_german }
-                capital = STATE_BRANDENBURG
-            }
-            """;
-
-            var loader = new CountryLoader(ParseTrees(input));
-            var output = loader.Load();
-
-            output.Values.Should().BeEmpty();
-            output.Diagnostics.Should().Contain(d => d.IsError && d.Message.Contains("color"));
-        }
-
-        [Fact(DisplayName = "不正な Color クオリファイアが指定されている場合、エラーが返される")]
-        public void Load_UnknownColorQualifier_ReturnsError()
-        {
-            var input = """
-            GER = {
-                color = hsl { 0.5 0.8 0.9 }
-                country_type = recognized
-                tier = empire
-                cultures = { north_german }
-                capital = STATE_BRANDENBURG
-            }
-            """;
-
-            var loader = new CountryLoader(ParseTrees(input));
-            var output = loader.Load();
-
-            output.Values.Should().BeEmpty();
-            output.Diagnostics.Should().Contain(d => d.IsError && d.Message.Contains("hsl"));
-        }
-
-        // --- トップレベルノードのエラー ---
-
-        [Fact(DisplayName = "トップレベルノードがスカラー値の場合、エラーが返される")]
-        public void Load_TopLevelScalarNode_ReturnsError()
-        {
-            var input = "some_scalar_value";
-
-            var loader = new CountryLoader(ParseTrees(input));
-            var output = loader.Load();
-
-            output.Values.Should().BeEmpty();
-            output.Diagnostics.Should().ContainSingle(d => d.IsError);
-        }
-
-        // --- 失敗エントリと成功エントリの混在 ---
-
-        [Fact(DisplayName = "有効な国と無効な国が混在している場合、有効な国のみが返される")]
-        public void Load_ValidAndInvalidCountries_ReturnsOnlyValidCountries()
+        [Fact(DisplayName = "ロード可能データと不可能データが混在する場合、可能なデータはロードされエラーも返る")]
+        public void Load_MixedValidAndInvalidEntries_LoadsValidAndReturnsError()
         {
             var input = """
             GER = {
@@ -3127,30 +5128,14 @@ namespace Victoria3.Loading.Tests.Loaders
                 capital = STATE_ILE_DE_FRANCE
             }
             """;
+            var output = new CountryLoader(ParseTrees(input)).Load();
 
-            var loader = new CountryLoader(ParseTrees(input));
-            var output = loader.Load();
-
-            output.Values.Should().HaveCount(2);
-            output.Values.Select(c => c.Tag).Should().Equal("GER", "FRA");
-            output.Diagnostics.Should().ContainSingle(d => d.IsError);
+            output.Values.Select(x => x.Tag).Should().Equal("GER", "FRA");
+            output.Diagnostics.Should().Contain(d => d.IsError);
         }
-    }
 
-    public class CountryLoaderWarningTests
-    {
-
-        // テスト用の ScriptTree を生成するヘルパーメソッド
-        private static ScriptTree ParseTree(string text)
-            => ScriptTree.ParseText(text);
-
-        // 複数の ScriptTree を生成するヘルパーメソッド
-        private static IEnumerable<ScriptTree> ParseTrees(params string[] texts)
-            => texts.Select(ScriptTree.ParseText);
-
-
-        [Fact(DisplayName = "不明なプロパティが指定されている場合、警告が返される")]
-        public void Load_UnknownProperty_ReturnsWarningAndLoadsCountry()
+        [Fact(DisplayName = "不明なプロパティがある場合は警告になる")]
+        public void Load_UnknownProperty_ReturnsWarning()
         {
             var input = """
             GER = {
@@ -3159,49 +5144,280 @@ namespace Victoria3.Loading.Tests.Loaders
                 tier = empire
                 cultures = { north_german }
                 capital = STATE_BRANDENBURG
-                flag_color = red
-            }
-            """;
-
-            var loader = new CountryLoader(ParseTrees(input));
-            var output = loader.Load();
-
-            // ロードは成功する
-            output.Values.Should().HaveCount(1);
-            output.Values[0].Tag.Should().Be("GER");
-
-            // 警告が1件記録される
-            output.Diagnostics.Should().ContainSingle(d => d.IsWarning);
-            output.Diagnostics[0].Message.Should().Contain("flag_color");
-        }
-
-        [Fact(DisplayName = "複数の不明なプロパティが指定されている場合、各プロパティに対して警告が返される")]
-        public void Load_MultipleUnknownProperties_ReturnsWarningsForEach()
-        {
-            var input = """
-            GER = {
-                color = { 147 130 110 }
-                country_type = recognized
-                tier = empire
-                cultures = { north_german }
-                capital = STATE_BRANDENBURG
-                flag_color = red
                 unknown_prop = foo
             }
             """;
 
-            var loader = new CountryLoader(ParseTrees(input));
-            var output = loader.Load();
+            var output = new CountryLoader(ParseTrees(input)).Load();
 
-            output.Values.Should().HaveCount(1);
-            output.Diagnostics.Should().HaveCount(2);
-            output.Diagnostics.Should().AllSatisfy(d => d.IsWarning.Should().BeTrue());
+            output.Values.Should().ContainSingle();
+            output.Diagnostics.Should().ContainSingle(d => d.IsWarning && d.Message.Contains("unknown_prop"));
         }
     }
 }
 ```
 
-```Victoria3.Loading.Tests\Loaders\CountryLoaderSuccessTests.cs
+```Victoria3.Loading.Tests\Loaders\FormableCountryLoaderTests.cs
+using FluentAssertions;
+using PdxScriptAnalysis;
+using Victoria3.Loading.Loaders;
+
+namespace Victoria3.Loading.Tests.Loaders
+{
+    public class FormableCountryLoaderTests
+    {
+        private static IEnumerable<ScriptTree> ParseTrees(params string[] texts)
+            => texts.Select(ScriptTree.ParseText);
+
+        [Fact(DisplayName = "蠢・域擅莉ｶ譛ｪ貅(States縺ｪ縺励・UseCultureStates縺ｪ縺・縺ｧ縺ｯ繧ｨ繝ｩ繝ｼ")]
+        public void Load_MinimalWithoutStatesOrUseCultureStates_ReturnsError()
+        {
+            var input = """
+            GER = { }
+            """;
+
+            var output = new FormableCountryLoader(ParseTrees(input)).Load();
+
+            output.Values.Should().BeEmpty();
+            output.Diagnostics.Should().ContainSingle(d => d.IsError && d.Message.Contains("States or UseCultureStates"));
+        }
+
+        [Fact(DisplayName = "states 縺後≠繧後・繝ｭ繝ｼ繝峨〒縺阪ｋ")]
+        public void Load_WithStates_CanBeLoaded()
+        {
+            var input = """
+            GER = {
+                states = { STATE_BRANDENBURG }
+            }
+            """;
+
+            var output = new FormableCountryLoader(ParseTrees(input)).Load();
+
+            output.Diagnostics.Should().BeEmpty();
+            output.Values.Should().ContainSingle();
+            output.Values[0].Tag.Should().Be("GER");
+            output.Values[0].States.Should().Equal("STATE_BRANDENBURG");
+            output.Values[0].UseCultureStates.Should().BeFalse();
+            output.Values[0].RequiredStatesFraction.Should().Be(1m);
+        }
+
+        [Fact(DisplayName = "use_culture_states = yes 縺ｧ states 縺ｪ縺励〒繧ゅΟ繝ｼ繝峨〒縺阪ｋ")]
+        public void Load_WithUseCultureStatesYes_WithoutStates_CanBeLoaded()
+        {
+            var input = """
+            GER = {
+                use_culture_states = yes
+            }
+            """;
+
+            var output = new FormableCountryLoader(ParseTrees(input)).Load();
+
+            output.Diagnostics.Should().BeEmpty();
+            output.Values.Should().ContainSingle();
+            output.Values[0].UseCultureStates.Should().BeTrue();
+            output.Values[0].States.Should().BeEmpty();
+        }
+
+        [Fact(DisplayName = "is_major_formation = yes 縺ｧ譚｡莉ｶ莉倥″蠢・医′荳崎ｶｳ縺吶ｋ縺ｨ繧ｨ繝ｩ繝ｼ")]
+        public void Load_MajorFormationMissingConditionalRequired_ReturnsError()
+        {
+            var input = """
+            GER = {
+                states = { STATE_BRANDENBURG }
+                is_major_formation = yes
+            }
+            """;
+
+            var output = new FormableCountryLoader(ParseTrees(input)).Load();
+
+            output.Values.Should().BeEmpty();
+            output.Diagnostics.Should().Contain(d => d.IsError && d.Message.Contains("UnificationPlay"));
+            output.Diagnostics.Should().Contain(d => d.IsError && d.Message.Contains("LeadershipPlay"));
+            output.Diagnostics.Should().Contain(d => d.IsError && d.Message.Contains("MaxNumFormationCandidates"));
+            output.Diagnostics.Should().Contain(d => d.IsError && d.Message.Contains("CanBeFormationCandidate"));
+        }
+
+        [Fact(DisplayName = "is_major_formation = yes 縺ｧ譚｡莉ｶ莉倥″蠢・医ｒ貅縺溘○縺ｰ繝ｭ繝ｼ繝峨〒縺阪ｋ")]
+        public void Load_MajorFormationWithAllRequired_CanBeLoaded()
+        {
+            var input = """
+            GER = {
+                states = { STATE_BRANDENBURG }
+                is_major_formation = yes
+                unification_play = german_unification
+                leadership_play = german_leadership
+                max_num_formation_candidates = 3
+                can_be_formation_candidate = { always = yes }
+            }
+            """;
+
+            var output = new FormableCountryLoader(ParseTrees(input)).Load();
+            var value = output.Values[0];
+
+            output.Diagnostics.Should().BeEmpty();
+            output.Values.Should().ContainSingle();
+            value.IsMajorFormation.Should().BeTrue();
+            value.UnificationPlay.Should().Be("german_unification");
+            value.LeadershipPlay.Should().Be("german_leadership");
+            value.MaxNumFormationCandidates.Should().Be(3);
+            value.CanBeFormationCandidate.Should().NotBeNull();
+        }
+
+        [Fact(DisplayName = "縺吶∋縺ｦ縺ｮ繧ｪ繝励す繝ｧ繝ｳ繝輔ぅ繝ｼ繝ｫ繝峨ｒ繝ｭ繝ｼ繝峨〒縺阪ｋ")]
+        public void Load_AllOptionalFields_CanBeLoaded()
+        {
+            var input = """
+            GER = {
+                states = { STATE_BRANDENBURG STATE_SAXONY }
+                use_culture_states = yes
+                required_states_fraction = 0.5
+                ai_will_do = { base = 1 }
+                potential = { always = yes }
+                possible = { always = yes }
+                geographic_region = central_europe
+                is_major_formation = yes
+                unification_play = german_unification
+                leadership_play = german_leadership
+                max_num_formation_candidates = 3
+                can_be_formation_candidate = { always = yes }
+                can_be_unification_target = { always = yes }
+            }
+            """;
+
+            var output = new FormableCountryLoader(ParseTrees(input)).Load();
+            var f = output.Values[0];
+
+            output.Diagnostics.Should().BeEmpty();
+            f.Tag.Should().Be("GER");
+            f.States.Should().Equal("STATE_BRANDENBURG", "STATE_SAXONY");
+            f.UseCultureStates.Should().BeTrue();
+            f.RequiredStatesFraction.Should().Be(0.5m);
+            f.AIWillDo.Should().NotBeNull();
+            f.Potential.Should().NotBeNull();
+            f.Possible.Should().NotBeNull();
+            f.GeographicRegion.Should().Be("central_europe");
+            f.IsMajorFormation.Should().BeTrue();
+            f.UnificationPlay.Should().Be("german_unification");
+            f.LeadershipPlay.Should().Be("german_leadership");
+            f.MaxNumFormationCandidates.Should().Be(3);
+            f.CanBeFormationCandidate.Should().NotBeNull();
+            f.CanBeUnificationTarget.Should().NotBeNull();
+        }
+
+        [Fact(DisplayName = "1縺､縺ｮ繧ｹ繧ｯ繝ｪ繝励ヨ繝・Μ繝ｼ荳翫・隍・焚繝・・繧ｿ繧偵Ο繝ｼ繝峨〒縺阪ｋ")]
+        public void Load_MultipleInSingleTree_CanBeLoaded()
+        {
+            var input = """
+            GER = {
+                states = { STATE_BRANDENBURG }
+            }
+            FRA = {
+                states = { STATE_ILE_DE_FRANCE }
+            }
+            """;
+
+            var output = new FormableCountryLoader(ParseTrees(input)).Load();
+
+            output.Diagnostics.Should().BeEmpty();
+            output.Values.Select(x => x.Tag).Should().Equal("GER", "FRA");
+        }
+
+        [Fact(DisplayName = "隍・焚縺ｮ繧ｹ繧ｯ繝ｪ繝励ヨ繝・Μ繝ｼ縺ｮ繝・・繧ｿ繧偵Ο繝ｼ繝峨〒縺阪ｋ")]
+        public void Load_MultipleTrees_CanBeLoaded()
+        {
+            var t1 = """
+                GER = {
+                    states = { STATE_BRANDENBURG }
+                }
+                """;
+            var t2 = """
+                FRA = {
+                    states = { STATE_ILE_DE_FRANCE }
+                }
+                """;
+
+            var output = new FormableCountryLoader(ParseTrees(t1, t2)).Load();
+
+            output.Diagnostics.Should().BeEmpty();
+            output.Values.Select(x => x.Tag).Should().Equal("GER", "FRA");
+        }
+
+        [Fact(DisplayName = "STATES 繧ｭ繝ｼ縺ｧ繧・states 縺ｨ縺励※繝ｭ繝ｼ繝峨〒縺阪ｋ")]
+        public void Load_StatesUppercase_Works()
+        {
+            var input = """
+            GER = {
+                STATES = { STATE_BRANDENBURG }
+            }
+            """;
+
+            var output = new FormableCountryLoader(ParseTrees(input)).Load();
+
+            output.Diagnostics.Should().BeEmpty();
+            output.Values[0].States.Should().Equal("STATE_BRANDENBURG");
+        }
+
+        [Fact(DisplayName = "Load() 縺ｮ蜀榊他縺ｳ蜃ｺ縺励〒險ｺ譁ｭ縺後Μ繧ｻ繝・ヨ縺輔ｌ繧・)]
+        public void Load_CalledTwice_DiagnosticsAreReset()
+        {
+            var invalid = """
+            GER = {
+                required_states_fraction = abc
+            }
+            """;
+
+            var loader = new FormableCountryLoader(ParseTrees(invalid));
+
+            var first = loader.Load();
+            var second = loader.Load();
+
+            first.Diagnostics.Count(d => d.IsError).Should().Be(2);
+            second.Diagnostics.Count(d => d.IsError).Should().Be(2);
+        }
+
+        [Fact(DisplayName = "繝医ャ繝励Ξ繝吶Ν繝弱・繝峨′辟｡蜉ｹ縺ｪ繧峨お繝ｩ繝ｼ")]
+        public void Load_InvalidTopLevelNode_ReturnsError()
+        {
+            var output = new FormableCountryLoader(ParseTrees("foo")).Load();
+
+            output.Values.Should().BeEmpty();
+            output.Diagnostics.Should().ContainSingle(d => d.IsError);
+        }
+
+        [Fact(DisplayName = "譛牙柑繝・・繧ｿ縺ｨ荳肴ｭ｣繝・・繧ｿ縺梧ｷｷ蝨ｨ縺励※繧ゅΟ繝ｼ繝峨・邯咏ｶ壹＠繧ｨ繝ｩ繝ｼ繧りｿ斐ｋ")]
+        public void Load_MixedValidAndInvalidEntries_ReturnsErrorAndContinues()
+        {
+            var input = """
+            GER = { required_states_fraction = abc }
+            FRA = { states = { STATE_ILE_DE_FRANCE } }
+            """;
+
+            var output = new FormableCountryLoader(ParseTrees(input)).Load();
+
+            output.Values.Should().HaveCount(1);
+            output.Diagnostics.Should().HaveCount(2);
+            output.Diagnostics.Should().Contain(d => d.IsError);
+        }
+
+        [Fact(DisplayName = "荳肴・縺ｪ繝励Ο繝代ユ繧｣縺後≠繧句ｴ蜷医・隴ｦ蜻翫↓縺ｪ繧・)]
+        public void Load_UnknownProperty_ReturnsWarning()
+        {
+            var input = """
+            GER = {
+                foo = bar
+            }
+            """;
+
+            var output = new FormableCountryLoader(ParseTrees(input)).Load();
+
+            output.Values.Should().BeEmpty();
+            output.Diagnostics.Should().ContainSingle(d => d.IsWarning && d.Message.Contains("foo"));
+        }
+    }
+}
+```
+
+```Victoria3.Loading.Tests\Loaders\HistoricalStateRegionLoaderTests.cs
 using FluentAssertions;
 using PdxScriptAnalysis;
 using Victoria3.GameData;
@@ -3209,376 +5425,586 @@ using Victoria3.Loading.Loaders;
 
 namespace Victoria3.Loading.Tests.Loaders
 {
-    public class CountryLoaderSuccessTests
+    public class HistoricalStateRegionLoaderTests
     {
-        // 最小構成の国家定義（必須フィールドのみ）
-        private const string MinimalCountry = """
-        GER = {
-            color = { 147 130 110 }
-            country_type = recognized
-            tier = empire
-            cultures = { north_german }
-            capital = STATE_BRANDENBURG
-        }
-        """;
-
-        // テスト用の ScriptTree を生成するヘルパーメソッド
-        private static ScriptTree ParseTree(string text)
-            => ScriptTree.ParseText(text);
-
-        // 複数の ScriptTree を生成するヘルパーメソッド
         private static IEnumerable<ScriptTree> ParseTrees(params string[] texts)
             => texts.Select(ScriptTree.ParseText);
 
-
-
-        // 正常系
-
-        [Fact(DisplayName = "最小構成の国家データを読み込むと、正しいタグを持つ国家が返される")]
-        public void Load_MinimalCountry_ReturnsCountryWithCorrectTag()
+        [Fact(DisplayName = "譛蟆乗ｧ区・縺ｮ繝・・繧ｿ繧定ｪｭ縺ｿ霎ｼ繧√ｋ")]
+        public void Load_MinimalHistoricalStateRegion_CanBeLoaded()
         {
-            var loader = new CountryLoader(ParseTrees(MinimalCountry));
-            var output = loader.Load();
+            var input = """
+            STATES = {
+                STATE_BRANDENBURG = { }
+            }
+            """;
 
-            output.Values.Should().HaveCount(1);
-            output.Values[0].Tag.Should().Be("GER");
-        }
-
-        [Fact(DisplayName = "最小構成の国家データを読み込むと、エラーが発生しない")]
-        public void Load_MinimalCountry_ReturnsNoErrors()
-        {
-            var loader = new CountryLoader(ParseTrees(MinimalCountry));
-            var output = loader.Load();
+            var output = new HistoricalStateRegionLoader(ParseTrees(input)).Load();
 
             output.Diagnostics.Should().BeEmpty();
+            output.Values.Should().ContainSingle();
+            output.Values[0].Tag.Should().Be("STATE_BRANDENBURG");
         }
 
-        [Fact(DisplayName = "最小構成の国家データを読み込むと、必須フィールドが正しく解析される")]
-        public void Load_MinimalCountry_ParsesRequiredFields()
-        {
-            var loader = new CountryLoader(ParseTrees(MinimalCountry));
-            var output = loader.Load();
-
-            var country = output.Values[0];
-            country.Type.Should().Be(CountryType.Recognized);
-            country.Tier.Should().Be(CountryTier.Empire);
-            country.Cultures.Should().Equal("north_german");
-            country.Capital.Should().Be("STATE_BRANDENBURG");
-        }
-
-        [Fact(DisplayName = "最小構成の国家データを読み込むと、オプションフィールドがデフォルト値を持つ")]
-        public void Load_MinimalCountry_OptionalFieldsHaveDefaults()
-        {
-            var loader = new CountryLoader(ParseTrees(MinimalCountry));
-            var output = loader.Load();
-
-            var country = output.Values[0];
-            country.SocialHierarchy.Should().BeNull();
-            country.Religion.Should().BeNull();
-            country.IsNamedFromCapital.Should().BeFalse();
-            country.ValidAsHomeCountryForSeparatists.Should().BeNull();
-            country.PrimaryUnitColor.Should().BeNull();
-            country.SecondaryUnitColor.Should().BeNull();
-            country.TertiaryUnitColor.Should().BeNull();
-        }
-
-        [Fact(DisplayName = "すべてのオプションフィールドが正しく解析される")]
-        public void Load_AllOptionalFields_ParsesCorrectly()
+        [Fact(DisplayName = "create_state 繧・隕∫ｴ蠖｢蠑上〒繝ｭ繝ｼ繝峨〒縺阪ｋ")]
+        public void Load_CreateState_TwoChildren_Works()
         {
             var input = """
-            JPN = {
-                color = { 255 0 0 }
-                country_type = recognized
-                tier = empire
-                social_hierarchy = monarchy
-                religion = shinto
-                cultures = { japanese }
-                capital = STATE_KANTO
-                is_named_from_capital = yes
+            STATES = {
+                STATE_BRANDENBURG = {
+                    create_state = {
+                        country = GER
+                        owned_provinces = { x1 x2 }
+                    }
+                }
             }
             """;
 
-            var loader = new CountryLoader(ParseTrees(input));
-            var output = loader.Load();
+            var output = new HistoricalStateRegionLoader(ParseTrees(input)).Load();
+            var createState = output.Values[0].CreateStates.Single();
 
-            var country = output.Values[0];
-            country.SocialHierarchy.Should().Be("monarchy");
-            country.Religion.Should().Be("shinto");
-            country.IsNamedFromCapital.Should().BeTrue();
-        }
-
-        [Fact(DisplayName = "複数の文化を持つ国家データを読み込むと、すべての文化が正しく解析される")]
-        public void Load_MultipleCultures_ParsesAllCultures()
-        {
-            var input = """
-            GER = {
-                color = { 147 130 110 }
-                country_type = recognized
-                tier = empire
-                cultures = { north_german south_german }
-                capital = STATE_BRANDENBURG
-            }
-            """;
-
-            var loader = new CountryLoader(ParseTrees(input));
-            var output = loader.Load();
-
-            output.Values[0].Cultures.Should().Equal("north_german", "south_german");
-        }
-
-        [Fact(DisplayName = "1つのスクリプトツリーに複数の国家データが含まれる場合、すべての国家が返される")]
-        public void Load_MultipleCountriesInOneTree_ReturnsAll()
-        {
-            var input = """
-            GER = {
-                color = { 147 130 110 }
-                country_type = recognized
-                tier = empire
-                cultures = { north_german }
-                capital = STATE_BRANDENBURG
-            }
-            FRA = {
-                color = { 50 100 200 }
-                country_type = recognized
-                tier = kingdom
-                cultures = { french }
-                capital = STATE_ILE_DE_FRANCE
-            }
-            """;
-
-            var loader = new CountryLoader(ParseTrees(input));
-            var output = loader.Load();
-
-            output.Values.Should().HaveCount(2);
-            output.Values.Select(c => c.Tag).Should().Equal("GER", "FRA");
-        }
-
-        [Fact(DisplayName = "複数のスクリプトツリーに複数の国家データが含まれる場合、すべての国家が返される")]
-        public void Load_MultipleScriptTrees_ReturnsAllCountries()
-        {
-            var tree1 = """
-            GER = {
-                color = { 147 130 110 }
-                country_type = recognized
-                tier = empire
-                cultures = { north_german }
-                capital = STATE_BRANDENBURG
-            }
-            """;
-            var tree2 = """
-            FRA = {
-                color = { 50 100 200 }
-                country_type = recognized
-                tier = kingdom
-                cultures = { french }
-                capital = STATE_ILE_DE_FRANCE
-            }
-            """;
-
-            var loader = new CountryLoader(ParseTrees(tree1, tree2));
-            var output = loader.Load();
-
-            output.Values.Should().HaveCount(2);
-            output.Values.Select(c => c.Tag).Should().Equal("GER", "FRA");
-        }
-
-        // --- CountryType のパース ---
-
-        [Theory(DisplayName = "すべての CountryType が正しく解析される")]
-        [InlineData("recognized", CountryType.Recognized)]
-        [InlineData("colonial", CountryType.Colonial)]
-        [InlineData("unrecognized", CountryType.Unrecognized)]
-        [InlineData("decentralized", CountryType.Decentralized)]
-        public void Load_AllCountryTypes_ParsesCorrectly(string typeText, CountryType expected)
-        {
-            var input = $$"""
-            X = {
-                color = { 0 0 0 }
-                country_type = {{typeText}}
-                tier = empire
-                cultures = { foo }
-                capital = STATE_X
-            }
-            """;
-
-            var loader = new CountryLoader(ParseTrees(input));
-            var output = loader.Load();
-
-            output.Values[0].Type.Should().Be(expected);
-        }
-
-        // --- CountryTier のパース ---
-
-        [Theory(DisplayName = "すべての CountryTier が正しく解析される")]
-        [InlineData("hegemony", CountryTier.Hegemony)]
-        [InlineData("empire", CountryTier.Empire)]
-        [InlineData("kingdom", CountryTier.Kingdom)]
-        [InlineData("grand_principality", CountryTier.GrandPrincipality)]
-        [InlineData("principality", CountryTier.Principality)]
-        [InlineData("city_state", CountryTier.CityState)]
-        public void Load_AllCountryTiers_ParsesCorrectly(string tierText, CountryTier expected)
-        {
-            var input = $$"""
-            X = {
-                color = { 0 0 0 }
-                country_type = recognized
-                tier = {{tierText}}
-                cultures = { foo }
-                capital = STATE_X
-            }
-            """;
-
-            var loader = new CountryLoader(ParseTrees(input));
-            var output = loader.Load();
-
-            output.Values[0].Tier.Should().Be(expected);
-        }
-
-        // --- 色形式のパース ---
-
-        [Fact(DisplayName = "RGB ブロック形式の色が正しく解析される")]
-        public void Load_ColorRgbBlock_ParsesCorrectly()
-        {
-            var input = """
-            X = {
-                color = { 147 130 110 }
-                country_type = recognized
-                tier = empire
-                cultures = { foo }
-                capital = STATE_X
-            }
-            """;
-
-            var loader = new CountryLoader(ParseTrees(input));
-            var output = loader.Load();
-
-            output.Values[0].Color.Should().Be(new GameColor(147, 130, 110));
-        }
-
-        [Fact(DisplayName = "RGB 型ブロック形式の色が正しく解析される")]
-        public void Load_ColorRgbTypedBlock_ParsesCorrectly()
-        {
-            var input = """
-            X = {
-                color = rgb { 147 130 110 }
-                country_type = recognized
-                tier = empire
-                cultures = { foo }
-                capital = STATE_X
-            }
-            """;
-
-            var loader = new CountryLoader(ParseTrees(input));
-            var output = loader.Load();
-
-            output.Values[0].Color.Should().Be(new GameColor(147, 130, 110));
-        }
-
-        [Fact(DisplayName = "HSV 型ブロック形式の色が正しく解析される")]
-        public void Load_ColorHsv_ConvertsToRgb()
-        {
-            // hsv { 0.0 0.0 1.0 } = 白 (255, 255, 255)
-            var input = """
-            X = {
-                color = hsv { 0.0 0.0 1.0 }
-                country_type = recognized
-                tier = empire
-                cultures = { foo }
-                capital = STATE_X
-            }
-            """;
-
-            var loader = new CountryLoader(ParseTrees(input));
-            var output = loader.Load();
-
-            output.Values[0].Color.Should().Be(new GameColor(255, 255, 255));
-        }
-
-        [Fact(DisplayName = "HSV360 型ブロック形式の色が正しく解析される")]
-        public void Load_ColorHsv360_ConvertsToRgb()
-        {
-            // hsv360 { 0 0 100 } = 白 (255, 255, 255)
-            var input = """
-            X = {
-                color = hsv360 { 0 0 100 }
-                country_type = recognized
-                tier = empire
-                cultures = { foo }
-                capital = STATE_X
-            }
-            """;
-
-            var loader = new CountryLoader(ParseTrees(input));
-            var output = loader.Load();
-
-            output.Values[0].Color.Should().Be(new GameColor(255, 255, 255));
-        }
-
-        // --- dynamic_country_definition ---
-
-        [Fact(DisplayName = "dynamic_country_definition が yes の場合、国家データはスキップされる")]
-        public void Load_DynamicCountryDefinition_IsSkipped()
-        {
-            var input = """
-            DYN = {
-                dynamic_country_definition = yes
-                color = { 0 0 0 }
-                country_type = recognized
-                tier = empire
-                cultures = { foo }
-                capital = STATE_X
-            }
-            """;
-
-            var loader = new CountryLoader(ParseTrees(input));
-            var output = loader.Load();
-
-            output.Values.Should().BeEmpty();
             output.Diagnostics.Should().BeEmpty();
+            createState.Country.Should().Be("GER");
+            createState.StateType.Should().BeNull();
+            createState.Provinces.Should().Equal("x1", "x2");
         }
 
-        [Fact(DisplayName = "dynamic_country_definition が no の場合、国家データはスキップされない")]
-        public void Load_DynamicCountryDefinitionNo_IsNotSkipped()
+        [Fact(DisplayName = "create_state 繧・隕∫ｴ蠖｢蠑・state_type莉倥″)縺ｧ繝ｭ繝ｼ繝峨〒縺阪ｋ")]
+        public void Load_CreateState_WithStateType_Works()
         {
             var input = """
-            X = {
-                dynamic_country_definition = no
-                color = { 0 0 0 }
-                country_type = recognized
-                tier = empire
-                cultures = { foo }
-                capital = STATE_X
+            STATES = {
+                STATE_BRANDENBURG = {
+                    create_state = {
+                        country = GER
+                        owned_provinces = { x1 x2 }
+                        state_type = incorporated
+                    }
+                }
             }
             """;
 
-            var loader = new CountryLoader(ParseTrees(input));
-            var output = loader.Load();
+            var output = new HistoricalStateRegionLoader(ParseTrees(input)).Load();
+            var createState = output.Values[0].CreateStates.Single();
 
-            output.Values.Should().HaveCount(1);
+            output.Diagnostics.Should().BeEmpty();
+            createState.Country.Should().Be("GER");
+            createState.StateType.Should().Be("incorporated");
+            createState.Provinces.Should().Equal("x1", "x2");
         }
 
-        // --- Load() の再呼び出し ---
+        [Fact(DisplayName = "add_homeland 縺ｨ add_claim 繧定､・焚繝ｭ繝ｼ繝峨〒縺阪ｋ")]
+        public void Load_HomelandsAndClaims_Works()
+        {
+            var input = """
+            STATES = {
+                STATE_BRANDENBURG = {
+                    add_homeland = north_german
+                    add_homeland = south_german
+                    add_claim = GER
+                    add_claim = PRU
+                }
+            }
+            """;
 
-        [Fact(DisplayName = "Load() を再呼び出しした場合、診断がリセットされる")]
+            var output = new HistoricalStateRegionLoader(ParseTrees(input)).Load();
+            var r = output.Values[0];
+
+            output.Diagnostics.Should().BeEmpty();
+            r.Homelands.Should().Equal("north_german", "south_german");
+            r.Claims.Should().Equal("GER", "PRU");
+        }
+
+        [Fact(DisplayName = "1縺､縺ｮSTATES繝悶Ο繝・け蜀・・隍・焚繝・・繧ｿ繧偵Ο繝ｼ繝峨〒縺阪ｋ")]
+        public void Load_MultipleRegionsInSingleTree_CanBeLoaded()
+        {
+            var input = """
+            STATES = {
+                STATE_A = { }
+                STATE_B = { }
+            }
+            """;
+
+            var output = new HistoricalStateRegionLoader(ParseTrees(input)).Load();
+
+            output.Diagnostics.Should().BeEmpty();
+            output.Values.Select(x => x.Tag).Should().Equal("STATE_A", "STATE_B");
+        }
+
+        [Fact(DisplayName = "隍・焚繧ｹ繧ｯ繝ｪ繝励ヨ繝・Μ繝ｼ縺ｮ繝・・繧ｿ繧偵Ο繝ｼ繝峨〒縺阪ｋ")]
+        public void Load_MultipleTrees_CanBeLoaded()
+        {
+            var t1 = """
+            STATES = {
+                STATE_A = { }
+            }
+            """;
+            var t2 = """
+            STATES = {
+                STATE_B = { }
+            }
+            """;
+
+            var output = new HistoricalStateRegionLoader(ParseTrees(t1, t2)).Load();
+
+            output.Diagnostics.Should().BeEmpty();
+            output.Values.Select(x => x.Tag).Should().Equal("STATE_A", "STATE_B");
+        }
+
+        [Fact(DisplayName = "Load() 縺ｮ蜀榊他縺ｳ蜃ｺ縺励〒險ｺ譁ｭ縺後Μ繧ｻ繝・ヨ縺輔ｌ繧・)]
         public void Load_CalledTwice_DiagnosticsAreReset()
         {
-            var input = """
-            X = {
-                color = { 0 0 0 }
-                country_type = recognized
-                tier = empire
-                cultures = { foo }
-                capital = STATE_X
+            var invalid = """
+            STATES = {
+                STATE_A = {
+                    create_state = {
+                        country = GER
+                    }
+                }
             }
             """;
 
-            var loader = new CountryLoader(ParseTrees(input));
-            loader.Load();
-            var output = loader.Load();
+            var loader = new HistoricalStateRegionLoader(ParseTrees(invalid));
 
-            // 2回目も同じ結果になること（診断がクリアされること）
-            output.Values.Should().HaveCount(1);
+            var first = loader.Load();
+            var second = loader.Load();
+
+            first.Diagnostics.Count(d => d.IsError).Should().Be(1);
+            second.Diagnostics.Count(d => d.IsError).Should().Be(1);
+        }
+
+        [Fact(DisplayName = "繝医ャ繝励Ξ繝吶Ν繝弱・繝画焚縺御ｸ肴ｭ｣縺ｪ繧峨お繝ｩ繝ｼ")]
+        public void Load_TopLevelNodeCountInvalid_ReturnsError()
+        {
+            var input = """
+            STATES = { }
+            OTHER = { }
+            """;
+
+            var output = new HistoricalStateRegionLoader(ParseTrees(input)).Load();
+
+            output.Values.Should().BeEmpty();
+            output.Diagnostics.Should().ContainSingle(d => d.IsError);
+        }
+
+        [Fact(DisplayName = "繝医ャ繝励Ξ繝吶Ν繧ｭ繝ｼ縺郡TATES縺ｧ縺ｪ縺代ｌ縺ｰ繧ｨ繝ｩ繝ｼ")]
+        public void Load_TopLevelKeyInvalid_ReturnsError()
+        {
+            var input = """
+            FOO = { }
+            """;
+
+            var output = new HistoricalStateRegionLoader(ParseTrees(input)).Load();
+
+            output.Values.Should().BeEmpty();
+            output.Diagnostics.Should().ContainSingle(d => d.IsError);
+        }
+
+        [Fact(DisplayName = "荳肴・縺ｪ繝励Ο繝代ユ繧｣縺後≠繧句ｴ蜷医・隴ｦ蜻翫↓縺ｪ繧・)]
+        public void Load_UnknownProperty_ReturnsWarning()
+        {
+            var input = """
+            STATES = {
+                STATE_A = {
+                    foo = bar
+                }
+            }
+            """;
+
+            var output = new HistoricalStateRegionLoader(ParseTrees(input)).Load();
+
+            output.Values.Should().ContainSingle();
+            output.Diagnostics.Should().ContainSingle(d => d.IsWarning && d.Message.Contains("foo"));
+        }
+    }
+}
+```
+
+```Victoria3.Loading.Tests\Loaders\PropertyNodeParsersTests.cs
+using FluentAssertions;
+using PdxScriptAnalysis;
+using PdxScriptAnalysis.Syntax;
+using Victoria3.GameData;
+using Victoria3.Loading.Loaders;
+
+namespace Victoria3.Loading.Tests.Loaders
+{
+    public class PropertyNodeParsersTests
+    {
+        private enum TestEnum
+        {
+            GrandPrincipality,
+        }
+
+        private static PropertyNode ParseSinglePropertyNode(string text)
+        {
+            var root = ScriptTree.ParseText(text).Root;
+            root.Children.Should().ContainSingle();
+            return root.Children[0].Should().BeAssignableTo<PropertyNode>().Subject;
+        }
+
+        [Fact(DisplayName = "TryParseToString: ScalarPropertyNode を文字列として解析できる")]
+        public void TryParseToString_WithScalarProperty_ReturnsTrue()
+        {
+            var node = ParseSinglePropertyNode("name = test_country");
+
+            var ok = PropertyNodeParsers.TryParseToString(node, out var value, out var diagnostic);
+
+            ok.Should().BeTrue();
+            value.Should().Be("test_country");
+            diagnostic.Should().BeNull();
+        }
+
+        [Fact(DisplayName = "TryParseToString: BlockPropertyNode を渡すと失敗する")]
+        public void TryParseToString_WithBlockProperty_ReturnsFalse()
+        {
+            var node = ParseSinglePropertyNode("name = { test_country }");
+
+            var ok = PropertyNodeParsers.TryParseToString(node, out var value, out var diagnostic);
+
+            ok.Should().BeFalse();
+            value.Should().BeNull();
+            diagnostic.Should().NotBeNull();
+            diagnostic.Message.Should().Contain("Expected a scalar property node");
+        }
+
+        [Fact(DisplayName = "TryParseToStringList: 文字列リストを解析できる")]
+        public void TryParseToStringList_WithScalarChildren_ReturnsTrue()
+        {
+            var node = ParseSinglePropertyNode("cultures = { north_german south_german }");
+
+            var ok = PropertyNodeParsers.TryParseToStringList(node, out var values, out var diagnostic);
+
+            ok.Should().BeTrue();
+            values.Should().Equal("north_german", "south_german");
+            diagnostic.Should().BeNull();
+        }
+
+        [Fact(DisplayName = "TryParseToStringList: 子要素にスカラー以外があると失敗する")]
+        public void TryParseToStringList_WithNonScalarChild_ReturnsFalse()
+        {
+            var node = ParseSinglePropertyNode("cultures = { north_german { foo = bar } }");
+
+            var ok = PropertyNodeParsers.TryParseToStringList(node, out var values, out var diagnostic);
+
+            ok.Should().BeFalse();
+            values.Should().BeNull();
+            diagnostic.Should().NotBeNull();
+            diagnostic.Message.Should().Contain("Expected all children of the block");
+        }
+
+        [Theory(DisplayName = "TryParseToBool: yes/no を真偽値に変換できる")]
+        [InlineData("yes", true)]
+        [InlineData("no", false)]
+        public void TryParseToBool_ValidValue_ReturnsTrue(string raw, bool expected)
+        {
+            var node = ParseSinglePropertyNode($"flag = {raw}");
+
+            var ok = PropertyNodeParsers.TryParseToBool(node, out var value, out var diagnostic);
+
+            ok.Should().BeTrue();
+            value.Should().Be(expected);
+            diagnostic.Should().BeNull();
+        }
+
+        [Fact(DisplayName = "TryParseToBool: yes/no 以外は失敗する")]
+        public void TryParseToBool_InvalidValue_ReturnsFalse()
+        {
+            var node = ParseSinglePropertyNode("flag = true");
+
+            var ok = PropertyNodeParsers.TryParseToBool(node, out _, out var diagnostic);
+
+            ok.Should().BeFalse();
+            diagnostic.Should().NotBeNull();
+            diagnostic.Message.Should().Contain("yes").And.Contain("no");
+        }
+
+        [Fact(DisplayName = "TryParseToInt: 整数を解析できる")]
+        public void TryParseToInt_ValidValue_ReturnsTrue()
+        {
+            var node = ParseSinglePropertyNode("rank = 42");
+
+            var ok = PropertyNodeParsers.TryParseToInt(node, out var value, out var diagnostic);
+
+            ok.Should().BeTrue();
+            value.Should().Be(42);
+            diagnostic.Should().BeNull();
+        }
+
+        [Fact(DisplayName = "TryParseToDecimal: 小数を解析できる")]
+        public void TryParseToDecimal_ValidValue_ReturnsTrue()
+        {
+            var node = ParseSinglePropertyNode("ratio = 12.5");
+
+            var ok = PropertyNodeParsers.TryParseToDecimal(node, out var value, out var diagnostic);
+
+            ok.Should().BeTrue();
+            value.Should().Be(12.5m);
+            diagnostic.Should().BeNull();
+        }
+
+        [Theory(DisplayName = "TryParseToEnum: '_' '-' を正規化して列挙値に変換できる")]
+        [InlineData("grand_principality")]
+        [InlineData("grand-principality")]
+        public void TryParseToEnum_NormalizedText_ReturnsTrue(string raw)
+        {
+            var node = ParseSinglePropertyNode($"tier = {raw}");
+
+            var ok = PropertyNodeParsers.TryParseToEnum<TestEnum>(node, out var value, out var diagnostic);
+
+            ok.Should().BeTrue();
+            value.Should().Be(TestEnum.GrandPrincipality);
+            diagnostic.Should().BeNull();
+        }
+
+        [Fact(DisplayName = "TryParseToGameColor: RGB ブロックを解析できる")]
+        public void TryParseToGameColor_RgbBlock_ReturnsTrue()
+        {
+            var node = ParseSinglePropertyNode("color = { 147 130 110 }");
+
+            var ok = PropertyNodeParsers.TryParseToGameColor(node, out var color, out var diagnostic);
+
+            ok.Should().BeTrue();
+            color.Should().Be(new GameColor(147, 130, 110));
+            diagnostic.Should().BeNull();
+        }
+
+        [Fact(DisplayName = "TryParseToGameColor: HSV 型ブロックを RGB に変換できる")]
+        public void TryParseToGameColor_HsvTypedBlock_ReturnsTrue()
+        {
+            var node = ParseSinglePropertyNode("color = hsv { 0.0 0.0 1.0 }");
+
+            var ok = PropertyNodeParsers.TryParseToGameColor(node, out var color, out var diagnostic);
+
+            ok.Should().BeTrue();
+            color.Should().Be(new GameColor(255, 255, 255));
+            diagnostic.Should().BeNull();
+        }
+
+        [Fact(DisplayName = "TryParseToGameColor: 不正な type qualifier は失敗する")]
+        public void TryParseToGameColor_InvalidTypeQualifier_ReturnsFalse()
+        {
+            var node = ParseSinglePropertyNode("color = cmyk { 0 0 0 }");
+
+            var ok = PropertyNodeParsers.TryParseToGameColor(node, out _, out var diagnostic);
+
+            ok.Should().BeFalse();
+            diagnostic.Should().NotBeNull();
+            diagnostic.Message.Should().Contain("Invalid type qualifier");
+        }
+    }
+}
+```
+
+```Victoria3.Loading.Tests\Loaders\ReleasableCountryLoaderTests.cs
+using FluentAssertions;
+using PdxScriptAnalysis;
+using Victoria3.Loading.Loaders;
+
+namespace Victoria3.Loading.Tests.Loaders
+{
+    public class ReleasableCountryLoaderTests
+    {
+        private static IEnumerable<ScriptTree> ParseTrees(params string[] texts)
+            => texts.Select(ScriptTree.ParseText);
+
+        [Fact(DisplayName = "蠢・域擅莉ｶ譛ｪ貅(States/Provinces縺ｪ縺励・UseCultureStates縺ｪ縺・縺ｧ縺ｯ繧ｨ繝ｩ繝ｼ")]
+        public void Load_MinimalWithoutStatesProvincesUseCultureStates_ReturnsError()
+        {
+            var input = """
+            GER = { }
+            """;
+
+            var output = new ReleasableCountryLoader(ParseTrees(input)).Load();
+
+            output.Values.Should().BeEmpty();
+            output.Diagnostics.Should().ContainSingle(d => d.IsError && d.Message.Contains("States or Provinces or UseCultureStates"));
+        }
+
+        [Fact(DisplayName = "states 縺後≠繧後・繝ｭ繝ｼ繝峨〒縺阪ｋ")]
+        public void Load_WithStates_CanBeLoaded()
+        {
+            var input = """
+            GER = {
+                states = { STATE_BRANDENBURG }
+            }
+            """;
+
+            var output = new ReleasableCountryLoader(ParseTrees(input)).Load();
+
             output.Diagnostics.Should().BeEmpty();
+            output.Values.Should().ContainSingle();
+            output.Values[0].States.Should().Equal("STATE_BRANDENBURG");
+            output.Values[0].Provinces.Should().BeEmpty();
+        }
+
+        [Fact(DisplayName = "provinces 縺後≠繧後・繝ｭ繝ｼ繝峨〒縺阪ｋ")]
+        public void Load_WithProvinces_CanBeLoaded()
+        {
+            var input = """
+            GER = {
+                provinces = { x12345 x67890 }
+            }
+            """;
+
+            var output = new ReleasableCountryLoader(ParseTrees(input)).Load();
+
+            output.Diagnostics.Should().BeEmpty();
+            output.Values.Should().ContainSingle();
+            output.Values[0].Provinces.Should().Equal("x12345", "x67890");
+            output.Values[0].States.Should().BeEmpty();
+        }
+
+        [Fact(DisplayName = "use_culture_states = yes 縺ｧ states/provinces 縺ｪ縺励〒繧ゅΟ繝ｼ繝峨〒縺阪ｋ")]
+        public void Load_WithUseCultureStatesYes_WithoutStatesOrProvinces_CanBeLoaded()
+        {
+            var input = """
+            GER = {
+                use_culture_states = yes
+            }
+            """;
+
+            var output = new ReleasableCountryLoader(ParseTrees(input)).Load();
+
+            output.Diagnostics.Should().BeEmpty();
+            output.Values.Should().ContainSingle();
+            output.Values[0].UseCultureStates.Should().BeTrue();
+        }
+
+        [Fact(DisplayName = "縺吶∋縺ｦ縺ｮ繧ｪ繝励す繝ｧ繝ｳ繝輔ぅ繝ｼ繝ｫ繝峨ｒ繝ｭ繝ｼ繝峨〒縺阪ｋ")]
+        public void Load_AllOptionalFields_CanBeLoaded()
+        {
+            var input = """
+            GER = {
+                states = { STATE_BRANDENBURG STATE_SAXONY }
+                provinces = { x12345 x67890 }
+                use_culture_states = yes
+                required_num_states = 2
+                ai_will_do = { base = 1 }
+                possible = { always = yes }
+            }
+            """;
+
+            var output = new ReleasableCountryLoader(ParseTrees(input)).Load();
+            var r = output.Values[0];
+
+            output.Diagnostics.Should().BeEmpty();
+            r.States.Should().Equal("STATE_BRANDENBURG", "STATE_SAXONY");
+            r.Provinces.Should().Equal("x12345", "x67890");
+            r.UseCultureStates.Should().BeTrue();
+            r.RequiredNumStates.Should().Be(2);
+            r.AIWillDo.Should().NotBeNull();
+            r.Possible.Should().NotBeNull();
+        }
+
+        [Fact(DisplayName = "1縺､縺ｮ繧ｹ繧ｯ繝ｪ繝励ヨ繝・Μ繝ｼ荳翫・隍・焚繝・・繧ｿ繧偵Ο繝ｼ繝峨〒縺阪ｋ")]
+        public void Load_MultipleInSingleTree_CanBeLoaded()
+        {
+            var input = """
+                GER = {
+                    states = { STATE_BRANDENBURG }
+                }
+                FRA = {
+                    states = { STATE_ILE_DE_FRANCE }
+                }
+                """;
+
+            var output = new ReleasableCountryLoader(ParseTrees(input)).Load();
+
+            output.Diagnostics.Should().BeEmpty();
+            output.Values.Select(x => x.Tag).Should().Equal("GER", "FRA");
+        }
+
+        [Fact(DisplayName = "隍・焚縺ｮ繧ｹ繧ｯ繝ｪ繝励ヨ繝・Μ繝ｼ縺ｮ繝・・繧ｿ繧偵Ο繝ｼ繝峨〒縺阪ｋ")]
+        public void Load_MultipleTrees_CanBeLoaded()
+        {
+            var t1 = """
+                GER = {
+                    states = { STATE_BRANDENBURG }
+                }
+                """;
+            var t2 = """
+                FRA = {
+                    states = { STATE_ILE_DE_FRANCE }
+                }
+                """;
+
+            var output = new FormableCountryLoader(ParseTrees(t1, t2)).Load();
+
+            output.Diagnostics.Should().BeEmpty();
+            output.Values.Select(x => x.Tag).Should().Equal("GER", "FRA");
+        }
+
+        [Fact(DisplayName = "STATES 繧ｭ繝ｼ縺ｧ繧・states 縺ｨ縺励※繝ｭ繝ｼ繝峨〒縺阪ｋ")]
+        public void Load_StatesUppercase_Works()
+        {
+            var input = """
+            GER = {
+                STATES = { STATE_BRANDENBURG }
+            }
+            """;
+
+            var output = new ReleasableCountryLoader(ParseTrees(input)).Load();
+
+            output.Diagnostics.Should().BeEmpty();
+            output.Values[0].States.Should().Equal("STATE_BRANDENBURG");
+        }
+
+        [Fact(DisplayName = "Load() 縺ｮ蜀榊他縺ｳ蜃ｺ縺励〒險ｺ譁ｭ縺後Μ繧ｻ繝・ヨ縺輔ｌ繧・)]
+        public void Load_CalledTwice_DiagnosticsAreReset()
+        {
+            var invalid = """
+            GER = {
+                required_num_states = abc
+            }
+            """;
+
+            var loader = new ReleasableCountryLoader(ParseTrees(invalid));
+
+            var first = loader.Load();
+            var second = loader.Load();
+
+            first.Diagnostics.Count(d => d.IsError).Should().Be(2);
+            second.Diagnostics.Count(d => d.IsError).Should().Be(2);
+        }
+
+        [Fact(DisplayName = "繝医ャ繝励Ξ繝吶Ν繝弱・繝峨′辟｡蜉ｹ縺ｪ繧峨お繝ｩ繝ｼ")]
+        public void Load_InvalidTopLevelNode_ReturnsError()
+        {
+            var output = new ReleasableCountryLoader(ParseTrees("foo")).Load();
+
+            output.Values.Should().BeEmpty();
+            output.Diagnostics.Should().ContainSingle(d => d.IsError);
+        }
+
+        [Fact(DisplayName = "譛牙柑繝・・繧ｿ縺ｨ荳肴ｭ｣繝・・繧ｿ縺梧ｷｷ蝨ｨ縺励※繧ゅΟ繝ｼ繝峨・邯咏ｶ壹＠繧ｨ繝ｩ繝ｼ繧りｿ斐ｋ")]
+        public void Load_MixedValidAndInvalidEntries_ReturnsErrorAndContinues()
+        {
+            var input = """
+            GER = { required_num_states = abc }
+            FRA = { states = { STATE_ILE_DE_FRANCE } }
+            """;
+
+            var output = new ReleasableCountryLoader(ParseTrees(input)).Load();
+
+            output.Values.Should().HaveCount(1);
+            output.Diagnostics.Should().HaveCount(2);
+            output.Diagnostics.Should().Contain(d => d.IsError);
+        }
+
+        [Fact(DisplayName = "荳肴・縺ｪ繝励Ο繝代ユ繧｣縺後≠繧句ｴ蜷医・隴ｦ蜻翫↓縺ｪ繧・)]
+        public void Load_UnknownProperty_ReturnsWarning()
+        {
+            var input = """
+            GER = {
+                foo = bar
+            }
+            """;
+
+            var output = new ReleasableCountryLoader(ParseTrees(input)).Load();
+
+            output.Values.Should().BeEmpty();
+            output.Diagnostics.Should().ContainSingle(d => d.IsWarning && d.Message.Contains("foo"));
         }
     }
 }
@@ -3683,17 +6109,39 @@ namespace Victoria3.Localization
 
 
         /// <inheritdoc/>
-        public string Localize(string key)
+        public string Localize(string? key, bool removePrefix = true)
         {
-            ArgumentNullException.ThrowIfNull(key);
+            if (key is null) return string.Empty;
+            if (removePrefix)
+            {
+                key = RemovePrefix(key);
+            }
             return _localizations.TryGetValue(key, out var value) ? value : key;
         }
 
         /// <inheritdoc/>
-        public bool TryLocalize(string key, [NotNullWhen(true)] out string value)
+        public bool TryLocalize(string? key, [NotNullWhen(true)] out string value, bool removePrefix = true)
         {
-            ArgumentNullException.ThrowIfNull(key);
+            if (key is null)
+            {
+                value = null!;
+                return false;
+            }
+            if (removePrefix)
+            {
+                key = RemovePrefix(key);
+            }
             return _localizations.TryGetValue(key, out value!);
+        }
+
+        private static string RemovePrefix(string key)
+        {
+            var index = key.IndexOf(':');
+            if (index >= 0)
+            {
+                return key[(index + 1)..];
+            }
+            return key;
         }
     }
 }
@@ -3712,20 +6160,22 @@ namespace Victoria3.Localization
         /// <summary>
         /// 指定されたキーを対応する文字列に変換する。
         /// 対応する文字列が存在しない場合は、キー自体を返す。
+        /// キーがnullの場合は空文字列を返す。
         /// </summary>
         /// <param name="key">変換するキー。</param>
+        /// <param name="removePrefix">キーのプレフィックスを除去するかどうか。デフォルトはtrue。</param>
         /// <returns>変換された文字列。見つからない場合はキー自体を返す。</returns>
-        /// <exception cref="ArgumentNullException">キーがnullの場合にスローされる。</exception>
-        public string Localize(string key);
+        public string Localize(string? key, bool removePrefix = true);
 
         /// <summary>
         /// 指定されたキーを対応する文字列に変換し、成功したかどうかを示す。
+        /// キーがnullの場合はfalseを返し、valueにはnullが設定される。
         /// </summary>
         /// <param name="key">変換するキー。</param>
         /// <param name="value">変換された文字列。見つからない場合はnull。</param>
+        /// <param name="removePrefix">キーのプレフィックスを除去するかどうか。デフォルトはtrue。</param>
         /// <returns>変換が成功した場合はtrue、失敗した場合はfalse。</returns>
-        /// <exception cref="ArgumentNullException">キーがnullの場合にスローされる。</exception>
-        public bool TryLocalize(string key, [NotNullWhen(true)] out string value);
+        public bool TryLocalize(string? key, [NotNullWhen(true)] out string value, bool removePrefix = true);
     }
 }
 ```
@@ -3738,8 +6188,22 @@ namespace Victoria3.Localization
     /// </summary>
     public static class LocalizationPaths
     {
-        public const string Japanese = "localization/japanese";
-        public const string English = "localization/english";
+        public static string Japanese => @"localization\japanese";
+        public static string English => @"localization\english";
+
+        /// <summary>
+        /// 言語名を指定して対応する翻訳ファイルのパスを取得するメソッド。
+        /// </summary>
+        /// <param name="language">取得したい翻訳ファイルの言語名。</param>
+        /// <returns>指定された言語に対応する翻訳ファイルのパス。</returns>
+        /// <exception cref="ArgumentException">サポートされていない言語名が指定された場合にスローされる。</exception>
+        public static string GetPath(string language)
+            => language.ToLower() switch
+            {
+                "japanese" => Japanese,
+                "english" => English,
+                _ => throw new ArgumentException($"Unsupported language: {language}", nameof(language))
+            };
     }
 }
 ```
@@ -4013,6 +6477,36 @@ namespace Victoria3.Localization.Tests
             known.Should().Be("known-value");
 
             localizer.TryLocalize("unknown", out var _).Should().BeFalse();
+        }
+
+        [Fact(DisplayName = "キーがnullの場合、Localizeは空文字列を返す")]
+        public void Localize_NullKey_ReturnsEmptyString()
+        {
+            var localizer = FileLocalizer.FromText("""
+                known:0 "known-value"
+                """);
+
+            localizer.Localize(null).Should().Be(string.Empty);
+        }
+
+        [Fact(DisplayName = "キーがnullの場合、TryLocalizeはfalseを返す")]
+        public void TryLocalize_NullKey_ReturnsFalse()
+        {
+            var localizer = FileLocalizer.FromText("""
+                known:0 "known-value"
+                """);
+            localizer.TryLocalize(null, out var _).Should().BeFalse();
+        }
+
+        [Fact(DisplayName = "キーに接頭辞がある場合、接頭辞を削除してローカライズされる")]
+        public void Localize_KeyWithPrefix_PrefixRemoved()
+        {
+            var localizer = FileLocalizer.FromText("""
+                known:0 "known-value"
+                """);
+            localizer.Localize("prefix:known").Should().Be("known-value");
+            localizer.TryLocalize("prefix:known", out var value).Should().BeTrue();
+            value.Should().Be("known-value");
         }
     }
 }

@@ -56,9 +56,18 @@ namespace Victoria3.App.Commands
                     Console.WriteLine($"{index + 1,-4}: タグ: {country.Tag}, 種別: {country.Type, -13}, ティア: {country.Tier,-17}, 名前: {localizer.Localize(country.Tag)}");
                 }
 
-                foreach (var diagnostic in output.Diagnostics)
+                if (output.Diagnostics.Count == 0)
                 {
-                    Console.WriteLine($"診断結果: {diagnostic}");
+                    Console.WriteLine("診断結果はありません。");
+                    return;
+                }
+                else
+                {
+                    Console.WriteLine("診断結果:");
+                    foreach (var (index, diagnostic) in output.Diagnostics.Index())
+                    {
+                        Console.WriteLine($"{index + 1,-4}: {diagnostic}");
+                    }
                 }
             });
         }

@@ -7,6 +7,7 @@
     {
         Recognized,
         Colonial,
+        Company,
         Unrecognized,
         Decentralized,
     }
@@ -24,6 +25,7 @@
             {
                 CountryType.Recognized => "recognized",
                 CountryType.Colonial => "colonial",
+                CountryType.Company => "company",
                 CountryType.Unrecognized => "unrecognized",
                 CountryType.Decentralized => "decentralized",
                 _ => throw new ArgumentOutOfRangeException(nameof(type), type, "Unexpected country type")
@@ -40,6 +42,7 @@
             {
                 CountryType.Recognized => "Recognized",
                 CountryType.Colonial => "Colonial",
+                CountryType.Company => "Company",
                 CountryType.Unrecognized => "Unrecognized",
                 CountryType.Decentralized => "Decentralized",
                 _ => throw new ArgumentOutOfRangeException(nameof(type), type, "Unexpected country type")

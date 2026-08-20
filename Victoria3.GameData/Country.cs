@@ -16,6 +16,7 @@
     /// <param name="PrimaryUnitColor">主要ユニットの色。</param>
     /// <param name="SecondaryUnitColor">二次ユニットの色。</param>
     /// <param name="TertiaryUnitColor">三次ユニットの色。</param>
+    /// <param name="SealAndSignatureTexture">国家の印と署名のテクスチャ。</param>
     public sealed record Country(
         string Tag,
         GameColor Color,
@@ -29,7 +30,8 @@
         object? ValidAsHomeCountryForSeparatists,
         GameColor? PrimaryUnitColor,
         GameColor? SecondaryUnitColor,
-        GameColor? TertiaryUnitColor)
+        GameColor? TertiaryUnitColor,
+        string? SealAndSignatureTexture)
         : IPropertySchemaProvider<Country>
     {
         private static readonly PropertySchema<Country>[] _propertySchemas =
@@ -47,6 +49,7 @@
             new PropertySchema<Country>(typeof(GameColor?), "Primary Unit Color", c => c.PrimaryUnitColor),
             new PropertySchema<Country>(typeof(GameColor?), "Secondary Unit Color", c => c.SecondaryUnitColor),
             new PropertySchema<Country>(typeof(GameColor?), "Tertiary Unit Color", c => c.TertiaryUnitColor),
+            new PropertySchema<Country>(typeof(string), "Seal And Signature Texture", c => c.SealAndSignatureTexture)
         ];
 
         /// <inheritdoc/>
