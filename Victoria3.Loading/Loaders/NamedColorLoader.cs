@@ -4,6 +4,10 @@ using Victoria3.GameData;
 
 namespace Victoria3.Loading.Loaders
 {
+    /// <summary>
+    /// 名前付きカラーを <see cref="ScriptTree"/> から読み込むローダー。
+    /// </summary>
+    /// <param name="trees">スクリプトツリーのコレクション</param>
     public sealed class NamedColorLoader(IEnumerable<ScriptTree> trees) : ILoader<NamedColor>
     {
         private readonly IEnumerable<ScriptTree> _trees = trees;

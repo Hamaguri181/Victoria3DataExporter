@@ -7,6 +7,9 @@ using Victoria3.Loading.Loaders;
 
 namespace Victoria3.App.Commands
 {
+    /// <summary>
+    /// ゲーム内の名前付きカラーの一覧を表示するコマンド。
+    /// </summary>
     internal class ListNamedColorsCommand : Command
     {
         internal ListNamedColorsCommand() : base("named-colors", "ゲーム内の名前付きカラーの一覧を表示します")

@@ -96,12 +96,29 @@ namespace Victoria3.App.Commands
 
         internal static LoadOutput<Country> LoadCountries(string gameDir)
         {
+
+            // 名前付きカラーの読み込み
+            var namedColorDataPath = Path.Combine(gameDir, Victoria3Paths.NamedColors);
+            var namedColorScriptTrees = Directory.EnumerateFiles(namedColorDataPath, "*.txt")
+                .Select(ScriptTree.ParseFile)
+                .ToList();
+            var namedColorOutput = new NamedColorLoader(namedColorScriptTrees).Load();
+            if (namedColorOutput.Diagnostics.Count > 0)
+            {
+                Console.WriteLine($"名前付きカラーの読み込み中に診断が発生しました。件数: {namedColorOutput.Diagnostics.Count}");
+                foreach (var diagnostic in namedColorOutput.Diagnostics)
+                {
+                    Console.WriteLine(diagnostic);
+                }
+            }
+            // 名前付きカラーの読み込みが完了した後、国データの読み込みを行う
+
             var countryDataPath = Path.Combine(gameDir, Victoria3Paths.CountryDefinitions);
             // 解析
             var scriptTrees = Directory.EnumerateFiles(countryDataPath, "*.txt").Select(ScriptTree.ParseFile).ToList();
             Console.WriteLine($"ファイル\"{countryDataPath}\"を解析しました。診断結果: {scriptTrees.Sum(st => st.Diagnostics.Count)}件");
             // ロード
-            var output = new CountryLoader(scriptTrees).Load();
+            var output = new CountryLoader(scriptTrees, namedColorOutput.Values).Load();
             Console.WriteLine($"読み込んだ国の数: {output.Values.Count}、診断結果: {output.Diagnostics.Count}件");
             foreach (var diagnostic in output.Diagnostics)
             {

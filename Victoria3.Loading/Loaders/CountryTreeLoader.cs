@@ -11,9 +11,11 @@ namespace Victoria3.Loading.Loaders
     /// 1つの<see cref="ScriptTree"/>から国家データを読み込むための内部クラス。
     /// </summary>
     /// <param name="tree">読み込むスクリプトツリー。</param>
-    internal sealed class CountryTreeLoader(ScriptTree tree)
+    /// <param name="namedColors">使用可能な名前付き色のコレクション。</param>
+    internal sealed class CountryTreeLoader(ScriptTree tree, IReadOnlyList<NamedColor> namedColors)
     {
         private readonly ScriptTree _tree = tree;
+        private readonly IReadOnlyList<NamedColor> _namedColors = namedColors;
         private readonly List<Diagnostic> _diagnostics = [];
 
         private string? FilePath => _tree.Source.FilePath;
@@ -194,7 +196,27 @@ namespace Victoria3.Loading.Loaders
 
         private bool TryParseToGameColor(PropertyNode node, out GameColor color)
         {
-            if (PropertyNodeParsers.TryParseToGameColor(node, out color, out var diagnostic))
+            // ゲームカラーは、カラーの名前か、RGB値のブロックで指定される。
+            if (node is ScalarPropertyNode scalarPropertyNode)
+            {
+                var colorName = scalarPropertyNode.Value.Token.Text;
+                // カラーの名前はダブルクォーテーションで囲まれている場合があるので、必要に応じてトリムする。
+                if (colorName[0] == '"' && colorName[^1] == '"')
+                {
+                    colorName = colorName[1..^1];
+                }
+
+                var namedColor = _namedColors.FirstOrDefault(c => c.Name == colorName);
+                if (namedColor is null)
+                {
+                    AddError($"Unknown named color \"{colorName}\".", scalarPropertyNode.Value.Token.Span, scalarPropertyNode.LinePosition);
+                    color = default;
+                    return false;
+                }
+                color = namedColor.Color;
+                return true;
+            }
+            else if (PropertyNodeParsers.TryParseToGameColor(node, out color, out var diagnostic))
             {
                 return true;
             }

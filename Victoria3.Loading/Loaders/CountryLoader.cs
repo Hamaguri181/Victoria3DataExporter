@@ -8,9 +8,11 @@ namespace Victoria3.Loading.Loaders
     /// 国家データを <see cref="ScriptTree"/> から読み込むローダー。
     /// </summary>
     /// <param name="trees">読み込むスクリプトツリーのコレクション。</param>
-    public sealed class CountryLoader(IEnumerable<ScriptTree> trees) : ILoader<Country>
+    /// <param name="namedColors">使用可能な名前付き色のコレクション。</param>
+    public sealed class CountryLoader(IEnumerable<ScriptTree> trees, IEnumerable<NamedColor> namedColors) : ILoader<Country>
     {
         private readonly IEnumerable<ScriptTree> _trees = trees;
+        private readonly IReadOnlyList<NamedColor> _namedColors = namedColors.ToList();
 
         ///  <inheritdoc/>
         public LoadOutput<Country> Load()
@@ -20,7 +22,7 @@ namespace Victoria3.Loading.Loaders
 
             foreach (var tree in _trees)
             {
-                var output = new CountryTreeLoader(tree).Load();
+                var output = new CountryTreeLoader(tree, _namedColors).Load();
                 countries.AddRange(output.Values);
                 diagnostics.AddRange(output.Diagnostics);
             }
