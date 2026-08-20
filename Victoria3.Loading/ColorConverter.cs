@@ -18,14 +18,21 @@ namespace Victoria3.Loading
             => new(r, g, b);
 
         /// <summary>
-        /// 指定された RGB 値を使用して <see cref="GameColor"/> を作成する。RGB 値は 0-255 の範囲であると仮定される。
+        /// 指定された RGB 値を使用して <see cref="GameColor"/> を作成する。
+        /// RGB 値は 0-255 の範囲であるときと、0-1 の範囲であるときの両方に対応する。
         /// </summary>
         /// <param name="r">赤成分 (0-255)</param>
         /// <param name="g">緑成分 (0-255)</param>
         /// <param name="b">青成分 (0-255)</param>
         /// <returns>作成された <see cref="GameColor"/> オブジェクト</returns>
         internal static GameColor FromRgb(decimal r, decimal g, decimal b)
-            => FromRgb((byte)r, (byte)g, (byte)b);
+        {
+            if (r <= 1 && g <= 1 && b <= 1)
+            {
+                r *= 255; g *= 255; b *= 255;
+            }
+            return FromRgb((byte)r, (byte)g, (byte)b);
+        }
 
         /// <summary>
         /// 指定された HSV 値を使用して <see cref="GameColor"/> を作成する。HSV 値はそれぞれ 0-1 の範囲であると仮定される。

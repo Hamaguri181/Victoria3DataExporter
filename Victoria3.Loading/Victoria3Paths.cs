@@ -9,5 +9,6 @@
         public static string CountryFormation => @"common\country_formation";
         public static string CountryCreation => @"common\country_creation";
         public static string HistoricalStates => @"common\history\states";
+        public static string NamedColors => @"common\named_colors";
     }
 }
